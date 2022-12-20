@@ -17,6 +17,8 @@ include "circt/Dialect/HW/HWDialect.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 
+include "circt/Dialect/HW/HWDialect.td"
+
 /// An attribute to indicate the output file an operation should be emitted to.
 def OutputFileAttr : AttrDef<HWDialect, "OutputFile"> {
   let summary = "Output file attribute";

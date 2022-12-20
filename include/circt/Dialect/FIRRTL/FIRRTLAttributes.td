@@ -120,57 +120,9 @@ def AugmentedDeletedType : AugmentedType<"AugmentedDeletedType"> {
   let extraClassDeclaration = hasName;
 }
 
-
-def ParamDeclAttr : AttrDef<FIRRTLDialect, "ParamDecl", [TypedAttrInterface]> {
-  let summary = "Module or instance parameter definition";
-  let description = [{
-    An attribute describing a module parameter, or instance parameter
-    specification.
-  }];
-
-  /// The value of the attribute - in a module, this is the default
-  /// value (and may be missing).  In an instance, this is a required field that
-  /// specifies the value being passed.  The verilog emitter omits printing the
-  /// parameter for an instance when the applied value and the default value are
-  /// the same.
-  let parameters = (ins "::mlir::StringAttr":$name,
-                        AttributeSelfTypeParameter<"">:$type,
-                        "::mlir::Attribute":$value);
-  let mnemonic = "param.decl";
-
-  let hasCustomAssemblyFormat = 1;
-
-  let builders = [
-    AttrBuilderWithInferredContext<(ins "::mlir::StringAttr":$name,
-                                        "::mlir::Type":$type),
-      "auto *context = type.getContext();\n"
-      "return $_get(context, name, type, Attribute());">,
-    AttrBuilderWithInferredContext<(ins "::mlir::StringRef":$name,
-                                        "::mlir::Type":$type),
-      "return get(StringAttr::get(type.getContext(), name), type);">,
-
-    AttrBuilderWithInferredContext<(ins "::mlir::StringAttr":$name,
-                                        "::mlir::TypedAttr":$value),
-      "auto *context = value.getContext();\n"
-      "return $_get(context, name, value.getType(), value);">,
-    AttrBuilderWithInferredContext<(ins "::mlir::StringRef":$name,
-                                        "::mlir::TypedAttr":$value),
-      "return get(StringAttr::get(value.getContext(), name), value);">
-  ];
-
-  let extraClassDeclaration = [{
-    static ParamDeclAttr getWithName(ParamDeclAttr param,
-                                     ::mlir::StringAttr name) {
-      return get(param.getContext(), name, param.getType(), param.getValue());
-    }
-  }];
-}
-
-/// An array of ParamDeclAttr's that may or may not have a 'value' specified,
-/// to be used on hw.module or hw.instance.  The hw.instance verifier further
-/// ensures that all the values are specified.
-def ParamDeclArrayAttr
-  : TypedArrayAttrBase<ParamDeclAttr, "parameter array attribute">;
+//===----------------------------------------------------------------------===//
+// Name Kinds
+//===----------------------------------------------------------------------===//
 
 /// An attribute describing a kind of a name which defines name preservation
 /// semantics. We preserve names tagged with `InterestingName`.
@@ -185,5 +137,42 @@ def NameKindEnumImpl: I32EnumAttr<"NameKindEnum", "name kind",
 
 def NameKindAttr: EnumAttr<FIRRTLDialect, NameKindEnumImpl, "name_kind">;
 
+//===----------------------------------------------------------------------===//
+// Read Under Write Behaviour
+//===----------------------------------------------------------------------===//
+
+def RUW_Undefined: I32EnumAttrCase<"Undefined", 0>;
+def RUW_Old: I32EnumAttrCase<"Old", 1>;
+def RUW_New: I32EnumAttrCase<"New", 2>;
+
+def RUWAttr: I32EnumAttr<"RUWAttr", "Read Under Write Enum",
+                         [RUW_Undefined, RUW_Old, RUW_New]>;
+
+//===----------------------------------------------------------------------===//
+// Memory Port Direction
+//===----------------------------------------------------------------------===//
+
+def MemDir_Infer    : I32EnumAttrCase<"Infer", 0>;
+def MemDir_Read     : I32EnumAttrCase<"Read", 1>;
+def MemDir_Write    : I32EnumAttrCase<"Write", 2>;
+def MemDir_ReadWrite: I32EnumAttrCase<"ReadWrite", 3>;
+
+def MemDirAttr: I32EnumAttr<"MemDirAttr", "Memory Direction Enum",
+                            [MemDir_Infer, MemDir_Read, MemDir_Write,
+                              MemDir_ReadWrite]>;
+
+//===----------------------------------------------------------------------===//
+// Event Control
+//===----------------------------------------------------------------------===//
+
+/// AtPosEdge triggers on a rise from 0 to 1/X/Z, or X/Z to 1.
+def AtPosEdge: I32EnumAttrCase<"AtPosEdge", 0, "posedge">;
+/// AtNegEdge triggers on a drop from 1 to 0/X/Z, or X/Z to 0.
+def AtNegEdge: I32EnumAttrCase<"AtNegEdge", 1, "negedge">;
+/// AtEdge(v) is syntactic sugar for "AtPosEdge(v) or AtNegEdge(v)".
+def AtEdge   : I32EnumAttrCase<"AtEdge", 2, "edge">;
+
+def EventControlAttr : I32EnumAttr<"EventControl", "edge control trigger",
+                                   [AtPosEdge, AtNegEdge, AtEdge]>  {}
 
 #endif // CIRCT_DIALECT_FIRRTL_FIRRTLATTRIBUTES_TD
