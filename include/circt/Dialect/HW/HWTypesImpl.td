@@ -23,6 +23,17 @@ class HWType<string name> : TypeDef<HWDialect, name> { }
 // Type declarations
 //===----------------------------------------------------------------------===//
 
+def NatTypeImpl : HWType<"Nat"> {
+  let summary = "an infinite width, non-synthesizeable non-negative integer type";
+  let description = [{
+    An integer type for compile-time constant values.
+  }];
+  let mnemonic = "nat";
+  // let extraClassDeclaration = [{
+  //   static Type get(MLIRContext *context);
+  // }];
+}
+
 // A parameterized integer type. Declares the hw::IntType in C++.
 def IntTypeImpl : HWType<"Int"> {
   let summary = "parameterized-width integer";

@@ -208,9 +208,6 @@ public:
 // IntType
 //===----------------------------------------------------------------------===//
 
-class SIntType;
-class UIntType;
-
 /// This is the common base class between SIntType and UIntType.
 class IntType : public FIRRTLBaseType, public WidthQualifiedTypeTrait<IntType> {
 public:

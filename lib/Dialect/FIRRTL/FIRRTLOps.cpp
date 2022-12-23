@@ -627,7 +627,7 @@ void FMemModuleOp::insertPorts(ArrayRef<std::pair<unsigned, PortInfo>> ports) {
 
 static void buildModule(OpBuilder &builder, OperationState &result,
                         StringAttr name, ArrayRef<PortInfo> ports,
-                        ArrayAttr annotations) {
+                        ArrayAttr annotations, ArrayAttr parameters = {}) {
   // Add an attribute for the name.
   result.addAttribute(::mlir::SymbolTable::getSymbolAttrName(), name);
 
@@ -666,13 +666,17 @@ static void buildModule(OpBuilder &builder, OperationState &result,
     annotations = builder.getArrayAttr({});
   result.addAttribute("annotations", annotations);
 
+  if (!parameters)
+    parameters = builder.getArrayAttr({});
+  result.addAttribute("parameters", parameters);
+
   result.addRegion();
 }
 
 void FModuleOp::build(OpBuilder &builder, OperationState &result,
                       StringAttr name, ArrayRef<PortInfo> ports,
-                      ArrayAttr annotations) {
-  buildModule(builder, result, name, ports, annotations);
+                      ArrayAttr annotations, ArrayAttr parameters) {
+  buildModule(builder, result, name, ports, annotations, parameters);
 
   // Create a region and a block for the body.
   auto *bodyRegion = result.regions[0].get();
@@ -688,11 +692,9 @@ void FExtModuleOp::build(OpBuilder &builder, OperationState &result,
                          StringAttr name, ArrayRef<PortInfo> ports,
                          StringRef defnameAttr, ArrayAttr annotations,
                          ArrayAttr parameters) {
-  buildModule(builder, result, name, ports, annotations);
+  buildModule(builder, result, name, ports, annotations, parameters);
   if (!defnameAttr.empty())
     result.addAttribute("defname", builder.getStringAttr(defnameAttr));
-  if (!parameters)
-    result.addAttribute("parameters", builder.getArrayAttr({}));
 }
 
 void FMemModuleOp::build(OpBuilder &builder, OperationState &result,

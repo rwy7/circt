@@ -94,8 +94,10 @@ def FModuleOp : FIRRTLModuleLike<"module", [SingleBlock, NoTerminator]> {
     name, a list of ports, and a body that represents the connections within
     the module.
   }];
-  let arguments =
-            (ins DefaultValuedAttr<AnnotationArrayAttr, "{}">:$annotations);
+  let arguments = (ins
+    AnnotationArrayAttr:$annotations,
+    ParamDeclArrayAttr:$parameters
+  );
 
   let results = (outs);
   let regions = (region SizedRegion<1>:$body);
@@ -103,8 +105,12 @@ def FModuleOp : FIRRTLModuleLike<"module", [SingleBlock, NoTerminator]> {
   let skipDefaultBuilders = 1;
   let hasCustomAssemblyFormat = 1;
   let builders = [
-    OpBuilder<(ins "StringAttr":$name, "ArrayRef<PortInfo>":$ports,
-               CArg<"ArrayAttr","ArrayAttr()">:$annotations)>
+    OpBuilder<(ins
+      "StringAttr":$name,
+      "ArrayRef<PortInfo>":$ports,
+      CArg<"ArrayAttr", "ArrayAttr()">:$annotations,
+      CArg<"ArrayAttr", "ArrayAttr()">:$parameters
+    )>
   ];
 
   let extraClassDeclaration = [{

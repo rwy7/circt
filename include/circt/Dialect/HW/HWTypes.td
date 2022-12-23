@@ -20,6 +20,12 @@ include "mlir/IR/AttrTypeBase.td"
 // Type predicates
 //===----------------------------------------------------------------------===//
 
+def NatType : DialectType<HWDialect, 
+  CPred<"::circt::hw::isNatType($_self)">,
+  "A non-negative integer",
+  "::circt::hw::NatType"
+>;
+
 // Type constraint that indicates that an operand/result may only be a valid,
 // known, non-directional type.
 def HWIntegerType : DialectType<HWDialect,
@@ -73,10 +79,10 @@ def HWAggregateType : DialectType<HWDialect,
       ::circt::hw::StructType>}]>;
 
 //===----------------------------------------------------------------------===//
-// Type Definitions
+// Attributes
 //===----------------------------------------------------------------------===//
 
-/// Points to a name within a module.
+// Points to a name within a module.
 def HWInnerRefAttr : Attr<
   CPred<"$_self.isa<::circt::hw::InnerRefAttr>()">,
         "name reference attribute"> {
@@ -117,7 +123,6 @@ def InnerSymProperties : AttrDef<HWDialect, "InnerSymProperties"> {
   // The assembly format is as follows:
   // "`<` `@` $name `,` $fieldID `,` $sym_visibility `>`";
 }
-
 
 def InnerSymAttr : AttrDef<HWDialect, "InnerSym"> {
   let summary = "Inner symbol definition";

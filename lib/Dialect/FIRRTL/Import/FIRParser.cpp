@@ -215,6 +215,7 @@ struct FIRParser {
   //===--------------------------------------------------------------------===//
 
   /// Parse 'intLit' into the specified value.
+  mlir::OptionalParseResult parseOptionalIntLit(APInt &result);
   ParseResult parseIntLit(APInt &result, const Twine &message);
   ParseResult parseIntLit(int64_t &result, const Twine &message);
   ParseResult parseIntLit(int32_t &result, const Twine &message);
@@ -231,7 +232,7 @@ struct FIRParser {
   ParseResult parseId(StringRef &result, const Twine &message);
   ParseResult parseId(StringAttr &result, const Twine &message);
   ParseResult parseFieldId(StringRef &result, const Twine &message);
-  ParseResult parseType(FIRRTLType &result, const Twine &message);
+  ParseResult parseType(Type &result, const Twine &message);
 
   ParseResult parseOptionalRUW(RUWAttr &result);
 
@@ -418,6 +419,26 @@ ParseResult FIRParser::parseOptionalAnnotations(SMLoc &loc, StringRef &result) {
 // Common Parser Rules
 //===--------------------------------------------------------------------===//
 
+/// constExpr ::= intLit |
+ParseResult FIRParser::parseConstExpr(hw::PEO &result, const Twine &message) {
+  auto parseResult = parseOptionalIntLit(value);
+  if (parseResult.has_value())
+    return parseResult.value();
+
+  return failure();
+}
+
+OptionalParseResult FIRParser::parseOptionalIntExpr(hw::PEO) {
+  APInt value;
+  auto parseResult = parseOptionalIntLit(value);
+  if (!parseResult.has_value())
+    return parseResult;
+  if (parseResult.value())
+    return parseResult;
+  
+
+}
+
 /// intLit    ::= UnsignedInt
 ///           ::= SignedInt
 ///           ::= HexLit
@@ -427,7 +448,7 @@ ParseResult FIRParser::parseOptionalAnnotations(SMLoc &loc, StringRef &result) {
 /// OctalLit  ::= '"' 'o' ( '+' | '-' )? ( OctalDigit )+ '"'
 /// BinaryLit ::= '"' 'b' ( '+' | '-' )? ( BinaryDigit )+ '"'
 ///
-ParseResult FIRParser::parseIntLit(APInt &result, const Twine &message) {
+mlir::OptionalParseResult FIRParser::parseOptionalIntLit(APInt &result) {
   auto spelling = getTokenSpelling();
   bool isNegative = false;
   switch (getToken().getKind()) {
@@ -510,8 +531,16 @@ ParseResult FIRParser::parseIntLit(APInt &result, const Twine &message) {
   }
 
   default:
-    return emitError("expected integer literal"), failure();
+    return failure();
   }
+}
+
+ParseResult FIRParser::parseIntLit(APInt &result, const Twine &message) {
+  auto status = parseOptionalIntLit(result);
+  if (status.has_value() && status.value())
+    return failure();
+  else
+    return emitError(message), failure();
 }
 
 ParseResult FIRParser::parseIntLit(int64_t &result, const Twine &message) {
@@ -568,6 +597,10 @@ template <typename T>
 ParseResult FIRParser::parseOptionalWidth(T &result) {
   if (!consumeIf(FIRToken::less))
     return result = -1, success();
+
+
+  if (parseConstExpr(result))
+    return failure();
 
   // Parse a width specifier if present.
   auto widthLoc = getToken().getLoc();
@@ -644,10 +677,15 @@ ParseResult FIRParser::parseFieldId(StringRef &result, const Twine &message) {
 ///
 /// field: 'flip'? fieldId ':' type
 ///
-ParseResult FIRParser::parseType(FIRRTLType &result, const Twine &message) {
+ParseResult FIRParser::parseType(Type &result, const Twine &message) {
   switch (getToken().getKind()) {
   default:
     return emitError(message), failure();
+
+  case FIRToken::kw_Nat:
+    consumeToken(FIRToken::kw_Nat);
+    result = hw::NatType::get(getContext());
+    break;
 
   case FIRToken::kw_Clock:
     consumeToken(FIRToken::kw_Clock);
@@ -2749,9 +2787,12 @@ private:
   ParseResult parseModule(CircuitOp circuit, StringRef circuitTarget,
                           unsigned indent);
 
-  ParseResult parsePortList(SmallVectorImpl<PortInfo> &resultPorts,
-                            SmallVectorImpl<SMLoc> &resultPortLocs,
-                            Location defaultLoc, unsigned indent);
+  /// Parse the ports and parameters of a module
+  ParseResult
+  parseModuleInterface(SmallVectorImpl<PortInfo> &resultPorts,
+                       SmallVectorImpl<SMLoc> &resultPortLocs,
+                       SmallVectorImpl<Attribute> &resultParams,
+                       Location defaultLoc, unsigned indent);
 
   struct DeferredModuleToParse {
     FModuleOp moduleOp;
@@ -2831,53 +2872,76 @@ ParseResult FIRCircuitParser::importOMIR(CircuitOp circuit, SMLoc loc,
 /// port     ::= dir id ':' type info? NEWLINE
 /// dir      ::= 'input' | 'output'
 ///
-/// defaultLoc specifies a location to use if there is no info locator for the
-/// port.
+/// defaultLoc specifies a location to use if there is no info locator for
+/// the port.
 ///
-ParseResult
-FIRCircuitParser::parsePortList(SmallVectorImpl<PortInfo> &resultPorts,
-                                SmallVectorImpl<SMLoc> &resultPortLocs,
-                                Location defaultLoc, unsigned indent) {
-  // Parse any ports.
-  while (getToken().isAny(FIRToken::kw_input, FIRToken::kw_output) &&
-         // Must be nested under the module.
-         getIndentation() > indent) {
-
+ParseResult FIRCircuitParser::parseModuleInterface(
+    SmallVectorImpl<PortInfo> &resultPorts,
+    SmallVectorImpl<SMLoc> &resultPortLocs,
+    SmallVectorImpl<Attribute> &resultParams, Location defaultLoc,
+    unsigned indent) {
+  while (indent < getIndentation()) {
     // We need one token lookahead to resolve the ambiguity between:
     // output foo             ; port
     // output <= input        ; identifier expression
     // output.thing <= input  ; identifier expression
-    auto backtrackState = getLexer().getCursor();
+    auto &token = getToken();
 
-    bool isOutput = getToken().is(FIRToken::kw_output);
-    consumeToken();
+    if (token.isAny(FIRToken::kw_input, FIRToken::kw_output)) {
+      auto backtrackState = getLexer().getCursor();
+      auto isOutput = token.is(FIRToken::kw_output);
+      consumeToken();
 
-    // If we have something that isn't a keyword then this must be an
-    // identifier, not an input/output marker.
-    if (!getToken().is(FIRToken::identifier) && !getToken().isKeyword()) {
-      backtrackState.restore(getLexer());
-      break;
+      if (!getToken().is(FIRToken::identifier) && !getToken().isKeyword()) {
+        backtrackState.restore(getLexer());
+        break;
+      }
+
+      StringAttr name;
+      FIRRTLType type;
+      LocWithInfo info(getToken().getLoc(), this);
+      if (parseId(name, "expected port name") ||
+          parseToken(FIRToken::colon, "expected ':' in port declaration") ||
+          parseType(type, "expected a type in port declaration") ||
+          info.parseOptionalInfo())
+        return failure();
+
+      // Ports typically do not have locators.  We rather default to the
+      // location of the module rather than a location in a .fir file.  If the
+      // module had a locator then this will be more friendly.  If not, this
+      // doesn't burn compile time creating too many unique locations.
+      info.setDefaultLoc(defaultLoc);
+
+      StringAttr innerSym = {};
+      resultPorts.push_back(
+          {name, type, direction::get(isOutput), innerSym, info.getLoc()});
+      resultPortLocs.push_back(info.getFIRLoc());
+      continue;
     }
 
-    StringAttr name;
-    FIRRTLType type;
-    LocWithInfo info(getToken().getLoc(), this);
-    if (parseId(name, "expected port name") ||
-        parseToken(FIRToken::colon, "expected ':' in port definition") ||
-        parseType(type, "expected a type in port declaration") ||
-        info.parseOptionalInfo())
-      return failure();
+    if (token.is(FIRToken::kw_parameter)) {
+      auto backtrackState = getLexer().getCursor();
+      consumeToken();
+      if (!getToken().is(FIRToken::identifier) && !getToken().isKeyword()) {
+        backtrackState.restore(getLexer());
+        break;
+      }
 
-    // Ports typically do not have locators.  We rather default to the locaiton
-    // of the module rather than a location in a .fir file.  If the module had a
-    // locator then this will be more friendly.  If not, this doesn't burn
-    // compile time creating too many unique locations.
-    info.setDefaultLoc(defaultLoc);
+      StringAttr name;
+      FIRRTLType type;
+      LocWithInfo info(getToken().getLoc(), this);
+      if (parseId(name, "expected parameter name") ||
+          parseToken(FIRToken::colon,
+                     "expected ':' in parameter declaration") ||
+          parseType(type, "expected a type in parameter declaration") ||
+          info.parseOptionalInfo())
+        return failure();
 
-    StringAttr innerSym = {};
-    resultPorts.push_back(
-        {name, type, direction::get(isOutput), innerSym, info.getLoc()});
-    resultPortLocs.push_back(info.getFIRLoc());
+      resultParams.push_back(hw::ParamDeclAttr::get(name, type));
+      continue;
+    }
+
+    break;
   }
 
   return success();
@@ -2902,6 +2966,7 @@ ParseResult FIRCircuitParser::parseModule(CircuitOp circuit,
   StringAttr name;
   SmallVector<PortInfo, 8> portList;
   SmallVector<SMLoc> portLocs;
+  SmallVector<Attribute> paramList;
 
   LocWithInfo info(getToken().getLoc(), this);
   if (parseId(name, "expected module name"))
@@ -2912,7 +2977,8 @@ ParseResult FIRCircuitParser::parseModule(CircuitOp circuit,
 
   if (parseToken(FIRToken::colon, "expected ':' in module definition") ||
       info.parseOptionalInfo() ||
-      parsePortList(portList, portLocs, info.getLoc(), indent))
+      parseModuleInterface(portList, portLocs, paramList, info.getLoc(),
+                           indent))
     return failure();
 
   auto builder = circuit.getBodyBuilder();
@@ -2934,10 +3000,12 @@ ParseResult FIRCircuitParser::parseModule(CircuitOp circuit,
     return failure();
   }
 
+  auto paramListAttr = ArrayAttr::get(getContext(), paramList);
+
   // If this is a normal module, parse the body into an FModuleOp.
   if (!isExtModule) {
     auto moduleOp =
-        builder.create<FModuleOp>(info.getLoc(), name, portList, annotations);
+        builder.create<FModuleOp>(info.getLoc(), name, portList, annotations, paramListAttr);
 
     // Parse the body of this module after all prototypes have been parsed. This
     // allows us to handle forward references correctly.

@@ -44,6 +44,9 @@ namespace hw {
 // Returns the canonical type of a HW type (inner type of a type alias).
 mlir::Type getCanonicalType(mlir::Type type);
 
+/// Return true if the specified type is a HW nat type.
+bool isNatType(mlir::Type type);
+
 /// Return true if the specified type is a value HW Integer type.  This checks
 /// that it is a signless standard dialect type.
 bool isHWIntegerType(mlir::Type type);
