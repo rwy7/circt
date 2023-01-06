@@ -15,6 +15,7 @@
 
 #include "circt/Dialect/FIRRTL/FIRRTLDialect.h"
 #include "circt/Support/LLVM.h"
+#include "circt/Dialect/FIRRTL/FIRRTLEnums.h"
 
 namespace circt {
 namespace firrtl {

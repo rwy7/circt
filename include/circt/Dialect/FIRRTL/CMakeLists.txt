@@ -1,7 +1,7 @@
 # FIRRTL
 add_circt_dialect(FIRRTL firrtl FIRRTL)
 
-set(LLVM_TARGET_DEFINITIONS FIRRTLAttributes.td)
+set(LLVM_TARGET_DEFINITIONS FIRRTLEnums.td)
 mlir_tablegen(FIRRTLEnums.h.inc -gen-enum-decls)
 mlir_tablegen(FIRRTLEnums.cpp.inc -gen-enum-defs)
 

@@ -225,8 +225,7 @@ struct FIRParser {
                               const Twine &message);
 
   // Parse ('<' intLit '>')? setting result to -1 if not present.
-  template <typename T>
-  ParseResult parseOptionalWidth(T &result);
+  ParseResult parseOptionalWidth(Attribute &result);
 
   // Parse the 'id' grammar, which is an identifier or an allowed keyword.
   ParseResult parseId(StringRef &result, const Twine &message);
@@ -235,6 +234,12 @@ struct FIRParser {
   ParseResult parseType(Type &result, const Twine &message);
 
   ParseResult parseOptionalRUW(RUWAttr &result);
+
+  //===--------------------------------------------------------------------===//
+  // Constant Expression / PEO Parsing
+  //===--------------------------------------------------------------------===//
+
+  ParseResult parseConstExp(Attribute &result, const Twine &message);
 
 private:
   FIRParser(const FIRParser &) = delete;
@@ -419,26 +424,6 @@ ParseResult FIRParser::parseOptionalAnnotations(SMLoc &loc, StringRef &result) {
 // Common Parser Rules
 //===--------------------------------------------------------------------===//
 
-/// constExpr ::= intLit |
-ParseResult FIRParser::parseConstExpr(hw::PEO &result, const Twine &message) {
-  auto parseResult = parseOptionalIntLit(value);
-  if (parseResult.has_value())
-    return parseResult.value();
-
-  return failure();
-}
-
-OptionalParseResult FIRParser::parseOptionalIntExpr(hw::PEO) {
-  APInt value;
-  auto parseResult = parseOptionalIntLit(value);
-  if (!parseResult.has_value())
-    return parseResult;
-  if (parseResult.value())
-    return parseResult;
-  
-
-}
-
 /// intLit    ::= UnsignedInt
 ///           ::= SignedInt
 ///           ::= HexLit
@@ -459,7 +444,7 @@ mlir::OptionalParseResult FIRParser::parseOptionalIntLit(APInt &result) {
     [[fallthrough]];
   case FIRToken::integer:
     if (spelling.getAsInteger(10, result))
-      return emitError(message), failure();
+      return failure();
 
     // Make sure that the returned APInt has a zero at the top so clients don't
     // confuse it with a negative number.
@@ -593,23 +578,17 @@ ParseResult FIRParser::parseVersionLit(uint32_t &major, uint32_t &minor,
 // optional-width ::= ('<' intLit '>')?
 //
 // This returns with result equal to -1 if not present.
-template <typename T>
-ParseResult FIRParser::parseOptionalWidth(T &result) {
+ParseResult FIRParser::parseOptionalWidth(Attribute &result) {
   if (!consumeIf(FIRToken::less))
-    return result = -1, success();
-
-
-  if (parseConstExpr(result))
+    return failure();
+  if (parseConstExp(result, "expected width expression"))
+    return failure();
+  if (parseToken(FIRToken::greater, "expected >"))
     return failure();
 
-  // Parse a width specifier if present.
-  auto widthLoc = getToken().getLoc();
-  if (parseIntLit(result, "expected width") ||
-      parseToken(FIRToken::greater, "expected >"))
-    return failure();
-
-  if (result < 0)
-    return emitError(widthLoc, "invalid width specifier"), failure();
+  // auto loc = getToken().getLoc();
+  // if (result < 0)
+  //   return emitError(loc, "invalid width specifier"), failure();
 
   return success();
 }
@@ -709,7 +688,7 @@ ParseResult FIRParser::parseType(Type &result, const Twine &message) {
     consumeToken();
 
     // Parse a width specifier if present.
-    int32_t width;
+    Attribute width;
     if (parseOptionalWidth(width))
       return failure();
 
@@ -794,6 +773,38 @@ ParseResult FIRParser::parseOptionalRUW(RUWAttr &result) {
   }
 
   return success();
+}
+
+//===--------------------------------------------------------------------===//
+// Constant Expression / PEO Parsing
+//===--------------------------------------------------------------------===//
+
+ParseResult FIRParser::parseConstExp(Attribute &result, const Twine &message) {
+  mlir::Builder builder(getContext());
+  auto loc = getToken().getLoc();
+
+  switch(getToken().getKind()) {
+  case FIRToken::signed_integer:
+  case FIRToken::integer:
+    {
+      int64_t value;
+      if (parseIntLit(value, "invalid integer expression"))
+        return failure();
+      result = builder.getI64IntegerAttr(value);
+      return success();
+    }
+  case FIRToken::identifier:
+    {
+      StringRef name;
+      if (parseId(name, "invalid identifier"))
+        return failure();
+      auto nameAttr = StringAttr::get(getContext(), name);
+      result = hw::ParamDeclRefAttr::get(getContext(), nameAttr, mlir::Type(nullptr));
+      return success();
+    }
+  default:
+    return emitError(loc, message);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1720,16 +1731,21 @@ ParseResult FIRStmtParser::parseIntegerLiteralExp(Value &result) {
   consumeToken();
 
   // Parse a width specifier if present.
-  int32_t width;
+  Attribute widthExp;
   APInt value;
-  if (parseOptionalWidth(width) ||
+  if (parseOptionalWidth(widthExp) ||
       parseToken(FIRToken::l_paren, "expected '(' in integer expression") ||
       parseIntLit(value, "expected integer value") ||
       parseToken(FIRToken::r_paren, "expected ')' in integer expression"))
     return failure();
 
+  auto width = uint32_t(-1);
+  auto widthResult = evalWidthExp(widthExp);
+  if (widthResult)
+    width = *widthResult;
+
   // Construct an integer attribute of the right width.
-  auto type = IntType::get(builder.getContext(), isSigned, width);
+  auto type = IntType::get(builder.getContext(), isSigned, widthExp);
 
   IntegerType::SignednessSemantics signedness =
       isSigned ? IntegerType::Signed : IntegerType::Unsigned;

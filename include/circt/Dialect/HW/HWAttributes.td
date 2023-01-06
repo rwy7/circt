@@ -214,9 +214,11 @@ def ParamVerbatimAttr : AttrDef<HWDialect, "ParamVerbatim",
   let hasCustomAssemblyFormat = 1;
 }
 
-
 /// Parameter Expression Opcodes.
 let cppNamespace = "circt::hw" in {
+
+/// Black Magic Expression Opcodes.
+def PEO_Hole : I32EnumAttrCase<"Hole", 0xdead, "_">;
 
 /// Fully Associative Expression Opcodes.
 def PEO_Add : I32EnumAttrCase<"Add", 0, "add">;
@@ -245,6 +247,17 @@ def PEOAttr  : I32EnumAttr<"PEO", "Parameter Expression Opcode",
                             PEO_Shl, PEO_ShrU, PEO_ShrS,
                             PEO_DivU, PEO_DivS, PEO_ModU, PEO_ModS,
                             PEO_CLog2, PEO_StrConcat]>;
+}
+
+def UnknownAttr : AttrDef<HWDialect, "Unknown", [TypedAttrInterface]> {
+  let summary = "Unknown expression";
+  let parameters = (ins AttributeSelfTypeParameter<"">:$type);
+  // let mnemonic = "unknown";
+  // let assemblyFormat = "$type";
+
+  let extraClassDeclaration = [{
+    // static mlir::TypedAttr getInteger();
+  }];
 }
 
 def ParamExprAttr : AttrDef<HWDialect, "ParamExpr", [TypedAttrInterface]> {

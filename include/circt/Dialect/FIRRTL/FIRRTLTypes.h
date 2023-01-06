@@ -182,8 +182,8 @@ mlir::Type getPassiveType(mlir::Type anyBaseFIRRTLType);
 /// Trait for types which have a width.
 /// Users must implement:
 /// ```c++
-/// /// Return the width if known, or -1 if unknown.
-/// int32_t getWidthOrSentinel();
+/// /// Return an expression that encodes the width of this type.
+/// Attribute getWidthExp();
 /// ```
 template <typename ConcreteType>
 class WidthQualifiedTypeTrait
@@ -192,15 +192,26 @@ public:
   /// Return an optional containing the width, if the width is known (or empty
   /// if width is unknown).
   std::optional<int32_t> getWidth() {
-    auto width = static_cast<ConcreteType *>(this)->getWidthOrSentinel();
+    auto width = getWidthOrSentinel();
     if (width < 0)
       return std::nullopt;
     return width;
   }
 
-  /// Return true if this integer type has a known width.
+  /// Return true if this integer type has a width expression.
   bool hasWidth() {
-    return 0 <= static_cast<ConcreteType *>(this)->getWidthOrSentinel();
+    return getWidthExp() != nullptr;
+  }
+
+  /// Return the width of this type if available, or -1 if the width
+  /// expression cannot be coerced to a 
+  int32_t getWidthOrSentinel() {
+    return evalWidthExp(getWidthExp());
+  }
+
+private:
+  Attribute getWidthExp() {
+    return static_cast<ConcreteType *>(this)->getWidthExp();
   }
 };
 
@@ -217,11 +228,13 @@ public:
   static IntType get(MLIRContext *context, bool isSigned,
                      int32_t widthOrSentinel = -1);
 
+  static IntType get(MLIRContext *context, bool isSigned, Attribute width);
+
   bool isSigned() { return isa<SIntType>(); }
   bool isUnsigned() { return isa<UIntType>(); }
 
-  /// Return the width of this type, or -1 if it has none specified.
-  int32_t getWidthOrSentinel();
+  /// Return the expression representing the width of this type, or nullptr if unknown.
+  Attribute getWidthExp();
 
   static bool classof(Type type) {
     return type.isa<SIntType>() || type.isa<UIntType>();

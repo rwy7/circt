@@ -40,8 +40,10 @@ def SIntImpl : FIRRTLImplType<"SInt",
   let summary = "A signed integer type, whose width may not be known.";
   let parameters = (ins "int32_t":$widthOrSentinel);
   let builders = [
+    TypeBuilder<(ins "Attribute":$width)>,
     TypeBuilder<(ins "std::optional<int32_t>":$width)>,
-    TypeBuilder<(ins)>,
+    TypeBuilder<(ins "int32_t":$widthOrSentinel)>,
+    TypeBuilder<(ins)>
   ];
   let genVerifyDecl = true;
   let extraClassDeclaration = [{
@@ -56,8 +58,10 @@ def UIntImpl : FIRRTLImplType<"UInt",
   let summary = "An unsigned integer type, whose width may not be known.";
   let parameters = (ins "int32_t":$widthOrSentinel);
   let builders = [
+    TypeBuilder<(ins "Attribute":$width)>,
     TypeBuilder<(ins "std::optional<int32_t>":$width)>,
-    TypeBuilder<(ins)>,
+    TypeBuilder<(ins "int32_t":$widthOrSentinel)>,
+    TypeBuilder<(ins)>
   ];
   let genVerifyDecl = true;
   let extraClassDeclaration = [{
@@ -83,8 +87,10 @@ def AnalogTypeImpl : FIRRTLImplType<"Analog",
   let summary = "Analog signal";
   let parameters = (ins "int32_t":$widthOrSentinel);
   let builders = [
+    TypeBuilder<(ins "Attribute":$width)>,
     TypeBuilder<(ins "std::optional<int32_t>":$width)>,
-    TypeBuilder<(ins)>,
+    TypeBuilder<(ins "int32_t":$widthOrSentinel)>,
+    TypeBuilder<(ins)>
   ];
   let genVerifyDecl = true;
 }

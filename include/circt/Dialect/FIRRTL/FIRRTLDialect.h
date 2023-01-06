@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CIRCT_DIALECT_FIRRTL_DIALECT_H
-#define CIRCT_DIALECT_FIRRTL_DIALECT_H
+#ifndef CIRCT_DIALECT_FIRRTL_FIRRTLDIALECT_H
+#define CIRCT_DIALECT_FIRRTL_FIRRTLDIALECT_H
 
 #include "circt/Dialect/HW/HWDialect.h"
 #include "circt/Support/LLVM.h"
@@ -21,7 +21,4 @@
 // Pull in the dialect definition.
 #include "circt/Dialect/FIRRTL/FIRRTLDialect.h.inc"
 
-// Pull in all enum type definitions and utility function declarations.
-#include "circt/Dialect/FIRRTL/FIRRTLEnums.h.inc"
-
-#endif // CIRCT_DIALECT_FIRRTL_IR_DIALECT_H
+#endif // CIRCT_DIALECT_FIRRTL_FIRRTLDIALECT_H

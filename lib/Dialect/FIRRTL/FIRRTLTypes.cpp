@@ -717,6 +717,12 @@ int32_t IntType::getWidthOrSentinel() {
   return -1;
 }
 
+IntType IntType::get(MLIRContext *context, bool isSigned, Attribute width) {
+  if (isSigned)
+    return SIntType::get(context, width);
+  return UIntType::get(context, width);
+}
+
 //===----------------------------------------------------------------------===//
 // SIntType
 //===----------------------------------------------------------------------===//
@@ -730,9 +736,8 @@ SIntType SIntType::get(MLIRContext *context, std::optional<int32_t> width) {
 }
 
 LogicalResult SIntType::verify(function_ref<InFlightDiagnostic()> emitError,
-                               int32_t widthOrSentinel) {
-  if (widthOrSentinel < -1)
-    return emitError() << "invalid width";
+                               int32_t widthExp) {
+  // TODO: Typecheck the widthExp (can this be done in isolation?)
   return success();
 }
 
@@ -749,9 +754,8 @@ UIntType UIntType::get(MLIRContext *context, std::optional<int32_t> width) {
 }
 
 LogicalResult UIntType::verify(function_ref<InFlightDiagnostic()> emitError,
-                               int32_t widthOrSentinel) {
-  if (widthOrSentinel < -1)
-    return emitError() << "invalid width";
+                               int32_t widthExp) {
+  // TODO: Typecheck the widthExp (can this be done in isolation?)
   return success();
 }
 

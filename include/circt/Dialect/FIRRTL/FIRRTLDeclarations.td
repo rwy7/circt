@@ -14,6 +14,7 @@
 #define CIRCT_DIALECT_FIRRTL_FIRRTLDECLARATIONS_TD
 
 include "FIRRTLAttributes.td"
+include "FIRRTLEnums.td"
 include "FIRRTLDialect.td"
 include "FIRRTLOpInterfaces.td"
 include "FIRRTLTypes.td"
