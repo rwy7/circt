@@ -38,9 +38,9 @@ def SIntImpl : FIRRTLImplType<"SInt",
                               [WidthQualifiedTypeTrait, FieldIDTypeInterface],
                               "::circt::firrtl::IntType"> {
   let summary = "A signed integer type, whose width may not be known.";
-  let parameters = (ins "int32_t":$widthOrSentinel);
+  let parameters = (ins "Attribute":$widthExp);
   let builders = [
-    TypeBuilder<(ins "Attribute":$width)>,
+    TypeBuilder<(ins "Attribute":$widthExp)>,
     TypeBuilder<(ins "std::optional<int32_t>":$width)>,
     TypeBuilder<(ins "int32_t":$widthOrSentinel)>,
     TypeBuilder<(ins)>
@@ -49,6 +49,7 @@ def SIntImpl : FIRRTLImplType<"SInt",
   let extraClassDeclaration = [{
     using WidthQualifiedTypeTrait<SIntType>::getWidth;
     using WidthQualifiedTypeTrait<SIntType>::hasWidth;
+    using WidthQualifiedTypeTrait<SIntType>::getWidthOrSentinel;
   }];
 }
 
@@ -56,9 +57,9 @@ def UIntImpl : FIRRTLImplType<"UInt",
                               [WidthQualifiedTypeTrait, FieldIDTypeInterface],
                               "::circt::firrtl::IntType"> {
   let summary = "An unsigned integer type, whose width may not be known.";
-  let parameters = (ins "int32_t":$widthOrSentinel);
+  let parameters = (ins "Attribute":$widthExp);
   let builders = [
-    TypeBuilder<(ins "Attribute":$width)>,
+    TypeBuilder<(ins "Attribute":$widthExp)>,
     TypeBuilder<(ins "std::optional<int32_t>":$width)>,
     TypeBuilder<(ins "int32_t":$widthOrSentinel)>,
     TypeBuilder<(ins)>
@@ -67,6 +68,7 @@ def UIntImpl : FIRRTLImplType<"UInt",
   let extraClassDeclaration = [{
     using WidthQualifiedTypeTrait<UIntType>::getWidth;
     using WidthQualifiedTypeTrait<UIntType>::hasWidth;
+    using WidthQualifiedTypeTrait<UIntType>::getWidthOrSentinel;
   }];
 }
 
@@ -85,14 +87,19 @@ def AsyncResetTypeImpl : FIRRTLImplType<"AsyncReset", [FieldIDTypeInterface]> {
 def AnalogTypeImpl : FIRRTLImplType<"Analog",
   [WidthQualifiedTypeTrait, FieldIDTypeInterface]> {
   let summary = "Analog signal";
-  let parameters = (ins "int32_t":$widthOrSentinel);
+  let parameters = (ins "Attribute":$widthExp);
   let builders = [
-    TypeBuilder<(ins "Attribute":$width)>,
+    TypeBuilder<(ins "Attribute":$widthExp)>,
     TypeBuilder<(ins "std::optional<int32_t>":$width)>,
     TypeBuilder<(ins "int32_t":$widthOrSentinel)>,
     TypeBuilder<(ins)>
   ];
   let genVerifyDecl = true;
+  let extraClassDeclaration = [{
+    using WidthQualifiedTypeTrait<AnalogType>::getWidth;
+    using WidthQualifiedTypeTrait<AnalogType>::hasWidth;
+    using WidthQualifiedTypeTrait<AnalogType>::getWidthOrSentinel;
+  }];
 }
 
 def FVectorTypeImpl : FIRRTLImplType<"FVector", [FieldIDTypeInterface]> {

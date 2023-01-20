@@ -709,12 +709,12 @@ IntType IntType::get(MLIRContext *context, bool isSigned,
   return UIntType::get(context, widthOrSentinel);
 }
 
-int32_t IntType::getWidthOrSentinel() {
+Attribute IntType::getWidthExp() {
   if (isa<SIntType>())
-    return this->cast<SIntType>().getWidthOrSentinel();
+    return this->cast<SIntType>().getWidthExp();
   if (isa<UIntType>())
-    return this->cast<UIntType>().getWidthOrSentinel();
-  return -1;
+    return this->cast<UIntType>().getWidthExp();
+  return nullptr;
 }
 
 IntType IntType::get(MLIRContext *context, bool isSigned, Attribute width) {
@@ -736,7 +736,7 @@ SIntType SIntType::get(MLIRContext *context, std::optional<int32_t> width) {
 }
 
 LogicalResult SIntType::verify(function_ref<InFlightDiagnostic()> emitError,
-                               int32_t widthExp) {
+                               Attribute widthExp) {
   // TODO: Typecheck the widthExp (can this be done in isolation?)
   return success();
 }
@@ -754,7 +754,7 @@ UIntType UIntType::get(MLIRContext *context, std::optional<int32_t> width) {
 }
 
 LogicalResult UIntType::verify(function_ref<InFlightDiagnostic()> emitError,
-                               int32_t widthExp) {
+                               Attribute widthExp) {
   // TODO: Typecheck the widthExp (can this be done in isolation?)
   return success();
 }
@@ -1079,7 +1079,7 @@ auto RefType::verify(function_ref<InFlightDiagnostic()> emitErrorFn,
 //===----------------------------------------------------------------------===//
 
 AnalogType AnalogType::get(mlir::MLIRContext *context) {
-  return AnalogType::get(context, -1);
+  return AnalogType::get(context, Attribute(nullptr));
 }
 
 AnalogType AnalogType::get(mlir::MLIRContext *context,
@@ -1089,10 +1089,18 @@ AnalogType AnalogType::get(mlir::MLIRContext *context,
   return AnalogType::get(context, *width);
 }
 
+AnalogType AnalogType::get(mlir::MLIRContext *context,
+                           int32_t widthOrSentinel) {
+  if (widthOrSentinel < 0)
+    return AnalogType::get(context);
+
+  APInt width(widthOrSentinel);
+  return AnalogType::get(context, (context, widthOrSentinel));
+}
+
 LogicalResult AnalogType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 int32_t widthOrSentinel) {
-  if (widthOrSentinel < -1)
-    return emitError() << "invalid width";
+                                 Attribute widthExp) {
+  // TODO: Typecheck the widthExp? Likely not possible.
   return success();
 }
 

@@ -179,6 +179,8 @@ mlir::Type getPassiveType(mlir::Type anyBaseFIRRTLType);
 // Width Qualified Ground Types
 //===----------------------------------------------------------------------===//
 
+int32_t evalWidthExp(Attribute exp);
+
 /// Trait for types which have a width.
 /// Users must implement:
 /// ```c++
@@ -200,18 +202,13 @@ public:
 
   /// Return true if this integer type has a width expression.
   bool hasWidth() {
-    return getWidthExp() != nullptr;
+    return getWidthOrSentinel() < 0;
   }
 
   /// Return the width of this type if available, or -1 if the width
   /// expression cannot be coerced to a 
   int32_t getWidthOrSentinel() {
-    return evalWidthExp(getWidthExp());
-  }
-
-private:
-  Attribute getWidthExp() {
-    return static_cast<ConcreteType *>(this)->getWidthExp();
+    return evalWidthExp(static_cast<ConcreteType *>(this)->getWidthExp());
   }
 };
 
