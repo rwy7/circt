@@ -484,6 +484,30 @@ def RefImpl : FIRRTLImplType<"Ref",
 // Non-Hardware Type Definitions
 //===----------------------------------------------------------------------===//
 
+def InstanceImpl : FIRRTLImplType<"Instance", [], "circt::firrtl::FIRRTLType"> {
+  let summary = [{
+    An instance of a module.
+  }];
+  let parameters =
+    (ins "StringAttr":$moduleName, "ArrayRef<InstanceElement>":$elements);
+  let genStorageClass = false;
+  let storageClass = "InstanceTypeStorage";
+  let genAccessors = false;
+  let skipDefaultBuilders = true;
+  let builders = [
+    TypeBuilder<(ins "StringAttr":$moduleName,
+                     "ArrayRef<InstanceElement>":$elements)>
+  ];
+  let extraClassDeclaration = [{
+    StringAttr getModuleNameAttr() const;
+    StringRef getModuleName() const;
+
+    ArrayRef<InstanceElement> getElements() const;
+    InstanceElement getElement(IntegerAttr index) const;
+    InstanceElement getElement(size_t index) const;
+  }];
+}
+
 def StringImpl : FIRRTLImplType<"String", [], "circt::firrtl::FIRRTLType"> {
   let summary = [{
     An unlimited length string type. Not representable in hardware.

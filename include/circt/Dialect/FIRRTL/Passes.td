@@ -716,4 +716,13 @@ def FinalizeIR : Pass<"firrtl-finalize-ir", "mlir::ModuleOp"> {
   let dependentDialects = ["hw::HWDialect", "sv::SVDialect"];
 }
 
+def LowerProperties : Pass<"firrtl-lower-properties", "mlir::ModuleOp"> {
+  let summary = "Lower FIRRTL properties to the om dialect";
+  let description = [{
+    This pass splits the properties of firrtl modules into a parallel tree of
+    om-dialect classes.
+  }];
+  let constructor = "circt::firrtl::createLowerPropertiesPass()";
+}
+
 #endif // CIRCT_DIALECT_FIRRTL_PASSES_TD

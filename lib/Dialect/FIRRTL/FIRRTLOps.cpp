@@ -4594,6 +4594,26 @@ FIRRTLType RefSubOp::inferReturnType(ValueRange operands,
 }
 
 //===----------------------------------------------------------------------===//
+// InstanceSubOp
+//===----------------------------------------------------------------------===//
+
+void InstanceSubOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
+  genericAsmResultNames(*this, setNameFn);
+}
+
+FIRRTLType InstanceSubOp::inferReturnType(ValueRange operands,
+                                          ArrayRef<NamedAttribute> attrs,
+                                          std::optional<Location> loc) {
+  auto instanceType = operands[0].getType().dyn_cast<InstanceType>();
+  if (!instanceType)
+    return emitInferRetTypeError(loc, "input must be of instance type");
+
+  auto index = getAttr<IntegerAttr>(attrs, "index").getValue().getZExtValue();
+
+  return instanceType.getElement(index).type;
+}
+
+//===----------------------------------------------------------------------===//
 // TblGen Generated Logic.
 //===----------------------------------------------------------------------===//
 

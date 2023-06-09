@@ -1117,4 +1117,11 @@ def RefSubOp : FIRRTLExprOp<"ref.sub"> {
      "$input `[` $index `]` attr-dict `:` qualified(type($input))";
 }
 
+def InstanceSubOp : FIRRTLExprOp<"instance.sub"> {
+  let summary = "Extract an element of an instance of a module";
+  let description = [{ TODO }];
+  let arguments = (ins InstanceType:$instance, I32Attr:$index);
+  let results = (outs AnyType:$result);
+}
+
 #endif // CIRCT_DIALECT_FIRRTL_FIRRTLEXPRESSIONS_TD

@@ -202,6 +202,13 @@ def PropertyType : FIRRTLDialectType<
     A FIRRTL property type, such as a string.
   }]>;
 
+def InstanceType : FIRRTLDialectType<
+  CPred<"$_self.isa<InstanceType>()">,
+  "InstanceType",
+  "::circt::firrtl::InstanceType",
+  [{ An instance of a module }]
+>;
+
 def StringType : FIRRTLDialectType<CPred<"$_self.isa<StringType>()">,
   "StringType", "::circt::firrtl::StringType">,
   BuildableType<"::circt::firrtl::StringType::get($_builder.getContext())">;

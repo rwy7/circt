@@ -13,6 +13,7 @@
 #ifndef CIRCT_DIALECT_FIRRTL_TYPES_H
 #define CIRCT_DIALECT_FIRRTL_TYPES_H
 
+#include "circt/Dialect/FIRRTL/FIRRTLAttributes.h"
 #include "circt/Dialect/FIRRTL/FIRRTLDialect.h"
 #include "circt/Dialect/HW/HWTypeInterfaces.h"
 #include "circt/Support/LLVM.h"
@@ -29,6 +30,7 @@ struct VectorTypeStorage;
 struct FEnumTypeStorage;
 struct CMemoryTypeStorage;
 struct RefTypeStorage;
+struct InstanceTypeStorage;
 } // namespace detail.
 
 class ClockType;
@@ -44,6 +46,7 @@ class FVectorType;
 class FEnumType;
 class RefType;
 class StringType;
+class InstanceType;
 
 /// A collection of bits indicating the recursive properties of a type.
 struct RecursiveTypeProperties {
@@ -155,7 +158,8 @@ public:
   /// Support method to enable LLVM-style type casting.
   static bool classof(Type type) {
     return llvm::isa<FIRRTLDialect>(type.getDialect()) &&
-           !type.isa<RefType, OpenBundleType, OpenVectorType, StringType>();
+           !type.isa<RefType, OpenBundleType, OpenVectorType, StringType,
+                     InstanceType>();
   }
 
   /// Returns true if this is a non-const "passive" that which is not analog.
@@ -306,6 +310,28 @@ public:
 
 protected:
   using Type::Type;
+};
+
+//===----------------------------------------------------------------------===//
+// InstanceElement
+//===----------------------------------------------------------------------===//
+
+struct InstanceElement {
+  StringAttr name;
+  Type type;
+  Direction direction;
+
+  StringRef getName() const { return name.getValue(); }
+  bool isInput() const { return direction == Direction::In; }
+  bool isOutput() const { return direction == Direction::Out; }
+
+  bool operator==(const InstanceElement &rhs) const {
+    return name == rhs.name && type == rhs.type;
+  }
+
+  bool operator!=(const InstanceElement &rhs) const {
+    return !(*this == rhs);
+  }
 };
 
 //===----------------------------------------------------------------------===//

@@ -18,6 +18,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <optional>
 
 using namespace circt;
 using namespace firrtl;
@@ -2091,6 +2092,63 @@ AsyncResetType AsyncResetType::getConstType(bool isConst) {
   if (isConst == this->isConst())
     return *this;
   return get(getContext(), isConst);
+}
+
+//===----------------------------------------------------------------------===//
+// InstanceTypeStorage
+//===----------------------------------------------------------------------===//
+
+struct firrtl::detail::InstanceTypeStorage : public TypeStorage {
+  using KeyTy = StringAttr;
+  using InstanceElement = InstanceElement;
+
+  static InstanceTypeStorage *construct(TypeStorageAllocator &allocator,
+                                        const KeyTy &key) {
+    auto *storage = allocator.allocate<InstanceTypeStorage>();
+    return new (storage) InstanceTypeStorage(key);
+  }
+
+  InstanceTypeStorage(StringAttr moduleName)
+      : moduleName(moduleName), elements() {}
+
+  LogicalResult mutate(TypeStorageAllocator &allocator,
+                       ArrayRef<InstanceElement> newElements) {
+    if (elements.data() != nullptr)
+      return success(elements == newElements);
+
+    elements = allocator.copyInto(newElements);
+    return success();
+  }
+
+  StringAttr getModuleName() const { return moduleName; }
+
+  ArrayRef<InstanceElement> getElements() const { return elements; }
+
+  bool operator==(KeyTy key) const { return moduleName == key; }
+
+  StringAttr moduleName;
+  ArrayRef<InstanceElement> elements;
+};
+
+//===----------------------------------------------------------------------===//
+// InstanceType
+//===----------------------------------------------------------------------===//
+
+StringAttr InstanceType::getModuleName() const {
+  return getImpl()->getModuleName();
+}
+
+ArrayRef<InstanceElement> InstanceType::getElements() const {
+  return getImpl()->getElements();
+}
+
+InstanceElement
+InstanceType::getElement(IntegerAttr index) const {
+  return getElement(index.getValue().getZExtValue());
+}
+
+InstanceElement InstanceType::getElement(size_t index) const {
+  return getElements()[index];
 }
 
 //===----------------------------------------------------------------------===//
