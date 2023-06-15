@@ -1622,11 +1622,11 @@ ParseResult FIRStmtParser::parseExpImpl(Value &result, const Twine &message,
         builder.getStringAttr(FIRToken::getStringValue(spelling)));
     break;
   }
-  //case FIRToken::lp_strcat: {
-  //  consumeToken(FIRToken::lp_strcat);
-  //  result = builder.create<StringConcatOp>();
-  //  break;
-  //}
+    // case FIRToken::lp_strcat: {
+    //   consumeToken(FIRToken::lp_strcat);
+    //   result = builder.create<StringConcatOp>();
+    //   break;
+    // }
 
     // Otherwise there are a bunch of keywords that are treated as identifiers
     // try them.
@@ -2139,7 +2139,7 @@ ParseResult FIRStmtParser::parseSimpleStmtImpl(unsigned stmtIndent) {
   /// Massage the kind based on the FIRRTL Version.
   switch (kind) {
   // TODO: What version were these new properties added in?
-  //case FIRToken::kw_passign:
+  // case FIRToken::kw_passign:
   case FIRToken::kw_invalidate:
   case FIRToken::kw_connect:
   case FIRToken::kw_regreset:
@@ -3153,24 +3153,12 @@ ParseResult FIRStmtParser::parseInstance() {
   auto annotations = getConstants().emptyArrayAttr;
   SmallVector<Attribute, 4> portAnnotations(modulePorts.size(), annotations);
 
-  StringAttr sym = {};
   auto result = builder.create<InstanceOp>(
       referencedModule, id, NameKindEnum::InterestingName,
-      annotations.getValue(), portAnnotations, false, sym);
+      annotations.getValue(), portAnnotations, false);
 
-  // Since we are implicitly unbundling the instance results, we need to keep
-  // track of the mapping from bundle fields to results in the unbundledValues
-  // data structure.  Build our entry now.
-  UnbundledValueEntry unbundledValueEntry;
-  unbundledValueEntry.reserve(modulePorts.size());
-  for (size_t i = 0, e = modulePorts.size(); i != e; ++i)
-    unbundledValueEntry.push_back({modulePorts[i].name, result.getResult(i)});
-
-  // Add it to unbundledValues and add an entry to the symbol table to remember
-  // it.
-  moduleContext.unbundledValues.push_back(std::move(unbundledValueEntry));
-  auto entryId = UnbundledID(moduleContext.unbundledValues.size());
-  return moduleContext.addSymbolEntry(id, entryId, startTok.getLoc());
+  return moduleContext.addSymbolEntry(id, result.getResult(),
+                                      startTok.getLoc());
 }
 
 /// cmem ::= 'cmem' id ':' type info?

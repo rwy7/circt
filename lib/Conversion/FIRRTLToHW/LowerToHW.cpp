@@ -3232,8 +3232,10 @@ LogicalResult FIRRTLLowering::visitDecl(InstanceOp oldInstance) {
     if (port.isOutput())
       continue;
 
-    auto portResult = oldInstance.getResult(portIndex);
-    assert(portResult && "invalid IR, couldn't find port");
+    auto portResults = oldInstance.getPortResults(portIndex);
+    if (portResults.size() > 1)
+      oldInstance->emitOpError() << "port " << portIndex << "aliased multiple times";
+    auto portResult = portResults[0];
 
     // Directly materialize inputs which are trivially assigned once through a
     // `StrictConnectOp`.
@@ -3317,9 +3319,10 @@ LogicalResult FIRRTLLowering::visitDecl(InstanceOp oldInstance) {
       continue;
 
     Value resultVal = newInstance.getResult(resultNo);
+    for (auto oldPortResult : oldInstance.getPortResults(portIndex)) {
+      (void)setLowering(oldPortResult, resultVal);
+    }
 
-    auto oldPortResult = oldInstance.getResult(portIndex);
-    (void)setLowering(oldPortResult, resultVal);
     ++resultNo;
   }
   return success();

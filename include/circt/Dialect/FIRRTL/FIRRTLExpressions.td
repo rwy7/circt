@@ -1117,11 +1117,29 @@ def RefSubOp : FIRRTLExprOp<"ref.sub"> {
      "$input `[` $index `]` attr-dict `:` qualified(type($input))";
 }
 
-def InstanceSubOp : FIRRTLExprOp<"instance.sub"> {
+//===----------------------------------------------------------------------===//
+// Instance Ops.
+//===----------------------------------------------------------------------===//
+
+/// The instance.sub op is different from other expressions, because its
+/// results correspond to ports, which can have foreign (not firrtl) types.
+/// For this reason, The instance.sub op is incompatible with the FIRRTLExprOp
+/// base class.
+def InstanceSubOp : FIRRTLOp< "instance.sub",
+  [HasCustomSSAName,
+   DeclareOpInterfaceMethods<InferTypeOpInterface>,
+   Pure]> {
   let summary = "Extract an element of an instance of a module";
   let description = [{ TODO }];
-  let arguments = (ins InstanceType:$instance, I32Attr:$index);
+  let arguments = (ins InstanceType:$input, I32Attr:$index);
   let results = (outs AnyType:$result);
+
+  let extraClassDeclaration = [{
+    FieldRef getAccessedField() {
+      return FieldRef(
+        getInput(), getInput().getType().getFieldID(getIndex()));
+    }
+  }];
 }
 
 #endif // CIRCT_DIALECT_FIRRTL_FIRRTLEXPRESSIONS_TD

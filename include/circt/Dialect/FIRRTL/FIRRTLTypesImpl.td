@@ -489,22 +489,38 @@ def InstanceImpl : FIRRTLImplType<"Instance", [], "circt::firrtl::FIRRTLType"> {
     An instance of a module.
   }];
   let parameters =
-    (ins "StringAttr":$moduleName, "ArrayRef<InstanceElement>":$elements);
+    (ins FlatSymbolRefAttr:$moduleName, "ArrayRef<InstanceElement>":$elements);
   let genStorageClass = false;
   let storageClass = "InstanceTypeStorage";
   let genAccessors = false;
   let skipDefaultBuilders = true;
   let builders = [
     TypeBuilder<(ins "StringAttr":$moduleName,
-                     "ArrayRef<InstanceElement>":$elements)>
+                     "ArrayRef<InstanceElement>":$elements)>,
+    TypeBuilder<(ins "FModuleLike":$module)>
   ];
   let extraClassDeclaration = [{
-    StringAttr getModuleNameAttr() const;
+    FlatSymbolRefAttr getModuleNameAttr() const;
     StringRef getModuleName() const;
 
+    size_t getNumElements() const { return getElements().size(); }
     ArrayRef<InstanceElement> getElements() const;
     InstanceElement getElement(IntegerAttr index) const;
     InstanceElement getElement(size_t index) const;
+
+    /// TODO: Remove this? Will not work with recursive types.
+    uint64_t getFieldID(uint64_t index) const;
+
+    /// Verify this type against the given module.
+    LogicalResult verifyAgainstModule(
+      function_ref<InFlightDiagnostic()> emitError, FModuleLike module) const;
+
+    /// Helper to print this type as a module interface.
+    /// Example:
+    /// ```
+    /// @MyModule(in %port: !firrtl.uint<8>, out o: !firrtl.uint<8>)
+    /// ```
+    void printModuleInterface(OpAsmPrinter &p) const;
   }];
 }
 

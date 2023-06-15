@@ -525,7 +525,7 @@ void ExtractInstancesPass::extractInstances() {
     // Add additional ports to the parent module as a replacement for the
     // instance port signals once the instance is extracted.
     unsigned numParentPorts = parent.getNumPorts();
-    unsigned numInstPorts = inst.getNumResults();
+    unsigned numInstPorts = inst.getNumElements();
 
     for (unsigned portIdx = 0; portIdx < numInstPorts; ++portIdx) {
       // Assemble the new port name as "<prefix>_<name>", where the prefix is

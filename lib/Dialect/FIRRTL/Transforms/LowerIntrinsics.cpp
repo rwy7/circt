@@ -204,8 +204,16 @@ static bool lowerCirctPlusArgValue(InstancePathCache &instancePathCache,
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
     auto newop = builder.create<PlusArgsValueIntrinsicOp>(
         inst.getResultTypes(), param.getValue().cast<StringAttr>());
-    inst.getResult(0).replaceAllUsesWith(newop.getFound());
-    inst.getResult(1).replaceAllUsesWith(newop.getResult());
+    
+    for (auto *user : inst->getUsers()) {
+      auto subOp = cast<InstanceSubOp>(user);
+      auto index = subOp.getIndex();
+      if (index == 0)
+        subOp.replaceAllUsesWith(newop.getFound());
+      else if (index == 1)
+        subOp.replaceAllUsesWith(newop.getResult());
+      subOp.erase();
+    }
     inst.erase();
   }
   return true;

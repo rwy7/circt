@@ -262,4 +262,16 @@ struct DenseMapInfo<circt::firrtl::FModuleOp> {
 };
 } // end namespace llvm
 
+//===----------------------------------------------------------------------===//
+// InstanceOp Inlines
+//===----------------------------------------------------------------------===//
+
+template <typename F>
+void circt::firrtl::InstanceOp::eachSubOp(F &&fn) {
+  for (auto *user : (*this)->getUsers()) {
+    auto subOp = mlir::cast<InstanceSubOp>(user);
+    fn(subOp, subOp.getIndex());
+  }
+}
+
 #endif // CIRCT_DIALECT_FIRRTL_OPS_H

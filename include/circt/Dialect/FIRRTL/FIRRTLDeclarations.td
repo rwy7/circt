@@ -33,7 +33,8 @@ class ReferableDeclOp<string mnemonic, list<Trait> traits = []> :
 
 def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firrtl::WhenOp">,
     DeclareOpInterfaceMethods<SymbolUserOpInterface>,
-    DeclareOpInterfaceMethods<HWInstanceLike>]> {
+    DeclareOpInterfaceMethods<HWInstanceLike>,
+    FirstAttrDerivedResultType]> {
   let summary = "Instantiate an instance of a module";
   let description = [{
     This represents an instance of a module.  The results are the modules inputs
@@ -47,6 +48,7 @@ def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firr
 
   let arguments = (ins TypeAttrOf<InstanceType>:$resultType,
                        StrAttr:$name,
+                       NameKindAttr:$nameKind,
                        AnnotationArrayAttr:$annotations,
                        PortAnnotationsAttr:$portAnnotations,
                        UnitAttr:$lowerToBind,
@@ -84,17 +86,20 @@ def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firr
   ];
 
   let extraClassDeclaration = [{
-    StringRef getModuleName() {
-      return getResultType().getModuleName();
+    FlatSymbolRefAttr getModuleNameAttr() {
+      return getResultType().getModuleNameAttr();
     }
 
-    StringAttr getModuleNameAttr() {
-      return getResultType().getModuleNameAttr();
+    StringRef getModuleName() {
+      return getResultType().getModuleName();
     }
 
     /// Lookup the module or extmodule for the symbol.  This returns null on
     /// invalid IR.
     FModuleLike getReferencedModule(SymbolTable& symtbl);
+
+    /// Get the number of ports (and properties) that this instance has.
+    size_t getNumElements() { return getResultType().getNumElements(); }
 
     /// Get information about an element (port or property) of this instance.
     InstanceElement getElement(size_t index) {
@@ -114,6 +119,15 @@ def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firr
     StringRef getPortNameStr(size_t resultNo) {
       return getPortName(resultNo).getValue();
     }
+
+    /// Get each result that aliases / refers to the port at the given index.
+    SmallVector<Value> getPortResults(size_t index);
+
+    /// Apply F to each InstanceSubOp that uses this instance, and the index of
+    /// that F should have the type:
+    /// `void(InstanceSubOp subOp, size_t portIndex)`
+    template <typename F>
+    void eachSubOp(F &&fn);
 
     /// Hooks for port annotations.
     ArrayAttr getPortAnnotation(unsigned portIdx);

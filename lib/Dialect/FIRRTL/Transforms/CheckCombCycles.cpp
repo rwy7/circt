@@ -191,15 +191,19 @@ namespace {
 class InstanceNodeIterator : public NodeIterator {
   /// Skip instance ports with not child.
   void skipToNextValidPort() {
-    ChildIterator newChild;
-    while (portIt != portEnd) {
-      newChild = ChildIterator(instance.getResult(*portIt));
-      if (newChild.isAtEnd())
-        ++portIt;
-      else
-        break;
-    }
-    child = portIt == portEnd ? ChildIterator() : newChild;
+    child = ChildIterator();
+
+    // TODO: DELETE THIS ENTIRE PASS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    // // ChildIterator newChild;
+    // while (portIt != portEnd) {
+    //   newChild = ChildIterator(instance.getResult(*portIt));
+    //   if (newChild.isAtEnd())
+    //     ++portIt;
+    //   else
+    //     break;
+    // }
+    // child = portIt == portEnd ? ChildIterator() : newChild;
   }
 
 public:

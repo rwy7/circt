@@ -1275,43 +1275,44 @@ bool TypeLoweringVisitor::visitExpr(RefResolveOp op) {
 
 bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
   bool skip = true;
-  SmallVector<Type, 8> resultTypes;
-  SmallVector<int64_t, 8> endFields; // Compressed sparse row encoding
+  auto oldInstanceType = op.getType();
   auto oldPortAnno = op.getPortAnnotations();
-  SmallVector<Direction> newDirs;
-  SmallVector<Attribute> newNames;
+
+  SmallVector<int64_t, 8> endFields; // Compressed sparse row encoding
+  SmallVector<InstanceElement, 8> newElements;
   SmallVector<Attribute> newPortAnno;
   PreserveAggregate::PreserveMode mode =
       getPreservationModeForModule(op.getReferencedModule(symTbl));
 
   endFields.push_back(0);
-  for (size_t i = 0, e = op.getNumResults(); i != e; ++i) {
-    auto srcType = op.getType(i).cast<FIRRTLType>();
+
+  for (size_t i = 0, e = oldInstanceType.getNumElements(); i != e; ++i) {
+    auto oldElement = oldInstanceType.getElement(i);
+    auto oldType = oldElement.type.cast<FIRRTLType>();
 
     // Flatten any nested bundle types the usual way.
     SmallVector<FlatBundleFieldEntry, 8> fieldTypes;
-    if (!peelType(srcType, fieldTypes, mode)) {
-      newDirs.push_back(op.getPortDirection(i));
-      newNames.push_back(op.getPortName(i));
-      resultTypes.push_back(srcType);
+    if (!peelType(oldType, fieldTypes, mode)) {
+      newElements.push_back(oldElement);
       newPortAnno.push_back(oldPortAnno[i]);
     } else {
       skip = false;
-      auto oldName = op.getPortNameStr(i);
-      auto oldDir = op.getPortDirection(i);
+      auto oldName = oldElement.name.getValue();
+      auto oldDir = oldElement.direction;
       // Store the flat type for the new bundle type.
       for (const auto &field : fieldTypes) {
-        newDirs.push_back(direction::get((unsigned)oldDir ^ field.isOutput));
-        newNames.push_back(builder->getStringAttr(oldName + field.suffix));
-        resultTypes.push_back(
-            mapBaseType(srcType, [&](auto base) { return field.type; }));
+        auto newName = builder->getStringAttr(oldName + field.suffix);
+        auto newDir = direction::get((unsigned)oldDir ^ field.isOutput);
+        auto newType =
+            mapBaseType(oldType, [&](auto base) { return field.type; });
+        newElements.push_back({newName, newType, newDir});
         auto annos = filterAnnotations(
-            context, oldPortAnno[i].dyn_cast_or_null<ArrayAttr>(), srcType,
+            context, oldPortAnno[i].dyn_cast_or_null<ArrayAttr>(), oldType,
             field);
         newPortAnno.push_back(annos);
       }
     }
-    endFields.push_back(resultTypes.size());
+    endFields.push_back(newElements.size());
   }
 
   auto sym = getInnerSymName(op);
@@ -1321,10 +1322,10 @@ bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
   }
 
   // FIXME: annotation update
+  auto newType =
+      builder->getType<InstanceType>(op.getModuleNameAttr(), newElements);
   auto newInstance = builder->create<InstanceOp>(
-      resultTypes, op.getModuleNameAttr(), op.getNameAttr(),
-      op.getNameKindAttr(), direction::packAttribute(context, newDirs),
-      builder->getArrayAttr(newNames), op.getAnnotations(),
+      newType, op.getNameAttr(), op.getNameKindAttr(), op.getAnnotations(),
       builder->getArrayAttr(newPortAnno), op.getLowerToBindAttr(),
       sym ? hw::InnerSymAttr::get(sym) : hw::InnerSymAttr());
 

@@ -202,16 +202,6 @@ Value circt::firrtl::getModuleScopedDriver(Value val, bool lookThroughWires,
 
     auto *op = val.getDefiningOp();
 
-    // The value is an instance port.
-    if (auto inst = dyn_cast<InstanceOp>(op)) {
-      auto resultNo = val.cast<OpResult>().getResultNumber();
-      // Base case: this is an instance's output port.
-      if (inst.getPortDirection(resultNo) == Direction::Out)
-        return inst.getResult(resultNo);
-      updateVal(val);
-      continue;
-    }
-
     // If told to look through wires, continue from the driver of the wire.
     if (lookThroughWires && isa<WireOp>(op)) {
       updateVal(op->getResult(0));
@@ -456,14 +446,15 @@ FieldRef circt::firrtl::getFieldRefFromValue(Value value) {
                              bundleType.getFieldID(subfieldOp.getFieldIndex());
                          return true;
                        })
-                       .Case<SubindexOp, OpenSubindexOp>([&](auto subindexOp) {
-                         value = subindexOp.getInput();
-                         auto vecType = subindexOp.getInput().getType();
-                         // Rebase the current index on the parent field's
-                         // index.
-                         id += vecType.getFieldID(subindexOp.getIndex());
-                         return true;
-                       })
+                       .Case<SubindexOp, OpenSubindexOp, InstanceSubOp>(
+                           [&](auto subindexOp) {
+                             value = subindexOp.getInput();
+                             auto vecType = subindexOp.getInput().getType();
+                             // Rebase the current index on the parent field's
+                             // index.
+                             id += vecType.getFieldID(subindexOp.getIndex());
+                             return true;
+                           })
                        .Default(false);
     if (!handled)
       break;
@@ -591,7 +582,7 @@ void circt::firrtl::walkGroundTypes(
     FIRRTLType firrtlType,
     llvm::function_ref<void(uint64_t, FIRRTLBaseType)> fn) {
   auto type = getBaseType(firrtlType);
-  
+
   // If this is not a base type, return.
   if (!type)
     return;

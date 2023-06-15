@@ -22,6 +22,7 @@
 
 namespace circt {
 namespace firrtl {
+class FModuleLike;
 namespace detail {
 struct FIRRTLBaseTypeStorage;
 struct WidthTypeStorage;
@@ -383,5 +384,5 @@ struct DenseMapInfo<circt::firrtl::FIRRTLType> {
 };
 
 } // namespace llvm
-
+  
 #endif // CIRCT_DIALECT_FIRRTL_TYPES_H
