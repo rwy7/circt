@@ -632,10 +632,11 @@ void Emitter::emitStatement(InstanceOp op) {
   SmallString<16> portName(legalName);
   portName.push_back('.');
   unsigned baseLen = portName.size();
-  for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
-    portName.append(legalize(op.getPortName(i)));
-    addValueName(op.getResult(i), portName);
-    portName.resize(baseLen);
+  for (auto *user : op->getUsers()) {
+    auto subOp = cast<InstanceSubOp>(user);
+    auto index = subOp.getIndex();
+    portName.append(legalize(op.getPortName(index)));
+    addValueName(op.getResult(), portName);
   }
 }
 

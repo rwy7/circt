@@ -244,8 +244,9 @@ void LowerMemoryPass::lowerMemory(MemOp mem, const FirMemory &summary,
                            mem.getNameKind(), mem.getAnnotations().getValue());
 
   // Wire all the ports together.
-  for (auto [dst, src] : llvm::zip(wrapper.getBodyBlock()->getArguments(),
-                                   memInst.getResults())) {
+  for (auto dst : wrapper.getBodyBlock()->getArguments()) {
+    auto idx = dst.getArgNumber();
+    auto src = b.create<InstanceSubOp>(mem->getLoc(), memInst, idx);
     if (wrapper.getPortDirection(dst.getArgNumber()) == Direction::Out)
       b.create<StrictConnectOp>(mem->getLoc(), dst, src);
     else
@@ -470,16 +471,22 @@ InstanceOp LowerMemoryPass::emitMemoryInstance(MemOp op, FModuleOp module,
   // Create the instance to replace the memop. The instance name matches the
   // name of the original memory module before deduplication.
   // TODO: how do we lower port annotations?
+  SmallVector<InstanceElement> instanceElements;
+  for (unsigned i = 0, e = portTypes.size(); i < e; ++i) {
+    instanceElements.push_back(
+        {cast<StringAttr>(portNames[i]), portTypes[i], portDirections[i]});
+  }
+  auto type = InstanceType::get(module.getNameAttr(), instanceElements);
   auto inst = builder.create<InstanceOp>(
-      op.getLoc(), portTypes, module.getNameAttr(), summary.getFirMemoryName(),
-      op.getNameKind(), portDirections, portNames,
+      op.getLoc(), type, summary.getFirMemoryName(), op.getNameKind(),
       /*annotations=*/ArrayRef<Attribute>(),
       /*portAnnotations=*/ArrayRef<Attribute>(), /*lowerToBind=*/false,
       op.getInnerSymAttr());
 
   // Update all users of the result of read ports
-  for (auto [subfield, result] : returnHolder) {
-    subfield->getResult(0).replaceAllUsesWith(inst.getResult(result));
+  for (auto [subfield, index] : returnHolder) {
+    auto value = builder.create<InstanceSubOp>(inst.getLoc(), inst, index);
+    subfield->getResult(0).replaceAllUsesWith(value);
     subfield->erase();
   }
 

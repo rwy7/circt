@@ -1166,6 +1166,43 @@ def RefSubOp : FIRRTLExprOp<"ref.sub"> {
 }
 
 //===----------------------------------------------------------------------===//
+// Instance Ops.
+//===----------------------------------------------------------------------===//
+
+/// The instance.sub op is different from other expressions, because its
+/// results correspond to ports, which can have foreign (not firrtl) types.
+/// For this reason, The instance.sub op is incompatible with the FIRRTLExprOp
+/// base class.
+def InstanceSubOp : FIRRTLOp< "instance.sub",
+  [HasCustomSSAName,
+   DeclareOpInterfaceMethods<InferTypeOpInterface>,
+   Pure]> {
+  let summary = "Extract an element of an instance of a module";
+  let description = [{
+    The instance.sub expression refers to a subelement of a module instance.
+    ```
+    %field = firrtl.instance.sub %instance[field] : !firrt.instance<@Module(field: !firrtl.uint<8>)>
+    ```
+  }];
+  let arguments = (ins InstanceType:$input, I32Attr:$index);
+  let results = (outs AnyType:$result);
+  let hasCustomAssemblyFormat = true;
+  let extraClassDeclaration = [{
+    /// Infer the return type of this operation.
+    /// Note: In contrast to other ops, this function infers a generic Type,
+    /// in order to support foreign types in ports.
+    static Type inferReturnType(ValueRange operands,
+                                ArrayRef<NamedAttribute> attrs,
+                                std::optional<Location> loc);
+
+    FieldRef getAccessedField() {
+      return FieldRef(
+        getInput(), getInput().getType().getFieldID(getIndex()));
+    }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // LTL Dialect Sequence and Property Intrinsics
 //===----------------------------------------------------------------------===//
 

@@ -69,14 +69,7 @@ struct PortInfo {
   /// Return true if this is an inout port.  This will be true if the port
   /// contains either bi-directional signals or analog types.
   /// Non-HW types (e.g., ref types) are never considered InOut.
-  bool isInOut() {
-    return TypeSwitch<Type, bool>(type)
-        .Case<FIRRTLBaseType>([](auto type) {
-          return !type.containsReference() &&
-                 (!type.isPassive() || type.containsAnalog());
-        })
-        .Default(false);
-  }
+  bool isInOut() { return isTypeInOut(type); }
 
   /// Default constructors
   PortInfo(StringAttr name, Type type, Direction dir, StringAttr symName = {},

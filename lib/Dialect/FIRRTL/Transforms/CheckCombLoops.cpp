@@ -319,6 +319,17 @@ public:
                 setValRefsTo(res, f);
             }
           })
+          .Case<InstanceSubOp>([&](InstanceSubOp sub) {
+            auto res = sub.getResult();
+            auto fieldID = sub.getAccessedField().getFieldID();
+            SmallVector<FieldRef, 4> fields;
+            forallRefersTo(sub.getInput(), [&](FieldRef subBase) {
+              fields.push_back(subBase.getSubField(fieldID));
+              return success();
+            });
+            for (auto f : fields)
+              setValRefsTo(res, f);
+          })
           .Case<SubaccessOp>([&](SubaccessOp sub) {
             auto vecType = sub.getInput().getType();
             auto res = sub.getResult();
@@ -335,6 +346,24 @@ public:
                     fields.push_back(subBase.getSubField(
                         1 + index * (vecType.getElementType().getMaxFieldID() +
                                      1)));
+                  return success();
+                },
+                false);
+            if (isValid) {
+              for (auto f : fields)
+                setValRefsTo(res, f);
+            }
+          })
+          .Case<InstanceSubOp>([&](InstanceSubOp sub) {
+            auto res = sub.getResult();
+            bool isValid = false;
+            auto fieldIndex = sub.getAccessedField().getFieldID();
+            SmallVector<FieldRef, 4> fields;
+            forallRefersTo(
+                sub.getInput(),
+                [&](FieldRef subBase) {
+                  isValid = true;
+                  fields.push_back(subBase.getSubField(fieldIndex));
                   return success();
                 },
                 false);
@@ -360,21 +389,15 @@ public:
   }
 
   void handleInstanceOp(InstanceOp ins, SmallVector<Value> &worklist) {
-    for (auto port : ins.getResults()) {
-      if (auto type = dyn_cast<FIRRTLBaseType>(port.getType())) {
-        worklist.push_back(port);
-        if (!type.isGround())
-          setValRefsTo(port, FieldRef(port, 0));
-      } else if (auto type = dyn_cast<PropertyType>(port.getType())) {
-        worklist.push_back(port);
-      }
-    }
+    auto result = ins.getResult();
+    worklist.push_back(result);
+    setValRefsTo(result, FieldRef(result, 0));
   }
 
   void handlePorts(FieldRef ref, SmallVectorImpl<Value> &children) {
     if (auto inst = dyn_cast_or_null<InstanceOp>(ref.getDefiningOp())) {
-      auto res = cast<OpResult>(ref.getValue());
-      auto portNum = res.getResultNumber();
+      auto instType = inst.getType();
+      auto portNum = instType.getIndexForFieldID(ref.getFieldID());
       auto refMod =
           dyn_cast_or_null<FModuleOp>(*instanceGraph.getReferencedModule(inst));
       if (!refMod)
@@ -386,12 +409,8 @@ public:
       for (auto modOutPort : pathIter->second) {
         auto outPortNum =
             cast<BlockArgument>(modOutPort.getValue()).getArgNumber();
-        if (modOutPort.getFieldID() == 0) {
-          children.push_back(inst.getResult(outPortNum));
-          continue;
-        }
-        FieldRef instanceOutPort(inst.getResult(outPortNum),
-                                 modOutPort.getFieldID());
+        FieldRef instanceOutPort(inst.getResult(),
+                                 instType.getFieldID(outPortNum));
         llvm::append_range(children, fieldToVals[instanceOutPort]);
       }
     } else if (auto mem = dyn_cast<MemOp>(ref.getDefiningOp())) {
@@ -487,6 +506,12 @@ public:
     return success();
   }
 
+  /// Val is derived from (or directly aliases) the field called 'ref'.
+  /// Record that:
+  ///  - val refers to ref
+  ///  - ref is aliased by val
+  ///  - val also aliases by all other aliases of ref
+  ///    - and vice versa
   void setValRefsTo(Value val, FieldRef ref) {
     assert(val && ref && " Value and Ref cannot be null");
     valRefersTo[val].insert(ref);

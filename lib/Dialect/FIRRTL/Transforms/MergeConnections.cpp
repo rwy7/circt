@@ -87,9 +87,13 @@ bool MergeConnection::peelConnect(StrictConnectOp connect) {
   auto destFieldRef = getFieldRefFromValue(connect.getDest());
   auto destRoot = destFieldRef.getValue();
 
-  // If dest is derived from mem op or has a ground type, we cannot merge them.
-  // If the connect's destination is a root value, we cannot merge.
-  if (destRoot.getDefiningOp<MemOp>() || destRoot == connect.getDest())
+  // If the connect's destination is any of the following, we cannot merge:
+  // - derived from mem op
+  // - derived from instance op
+  // - has a ground type
+  // - is a root value
+  if (destRoot.getDefiningOp<MemOp>() || destRoot.getDefiningOp<InstanceOp>() ||
+      destRoot == connect.getDest())
     return false;
 
   Value parent;

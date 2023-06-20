@@ -246,7 +246,9 @@ void PrefixModulesPass::renameModuleBody(std::string prefix, StringRef oldName,
       for (auto nla : instNLAs)
         nlaTable->updateModuleInNLA(nla, oldModName, newTarget);
 
-      instanceOp.setModuleNameAttr(FlatSymbolRefAttr::get(context, newTarget));
+      auto oldType = instanceOp.getType();
+      auto newType = InstanceType::get(newTarget, oldType.getElements());
+      instanceOp.getResult().setType(newType);
     } else {
       replacer.replaceElementsIn(op);
     }

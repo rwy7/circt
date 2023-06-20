@@ -150,7 +150,7 @@ firrtl.module @Child() {
   %w = firrtl.wire sym @w : !firrtl.uint<1>
 }
 firrtl.module @Parent() {
-  firrtl.instance child sym @child @Child()
+  %child = firrtl.instance sym @child @Child()
 }
 
 // CHECK-LABEL: @VerbatimExpr
@@ -167,7 +167,7 @@ firrtl.module @VerbatimExpr() {
 // CHECK: firrtl.instance foo sym @s1 {lowerToBind} @InstanceLowerToBind()
 firrtl.module @InstanceLowerToBind() {}
 firrtl.module @LowerToBind() {
-  firrtl.instance foo sym @s1 {lowerToBind} @InstanceLowerToBind()
+  %foo = firrtl.instance sym @s1 {lowerToBind} @InstanceLowerToBind()
 }
 
 // CHECK-LABEL: @ProbeTest

@@ -1912,6 +1912,8 @@ ParseResult FIRStmtParser::parsePostFixFieldId(Value &result) {
       indexV = bundle.getElementIndex(fieldName);
     else if (auto bundle = dyn_cast<OpenBundleType>(type))
       indexV = bundle.getElementIndex(fieldName);
+    else if (auto instance = dyn_cast<InstanceType>(type))
+      indexV = instance.getElementIndex(fieldName);
     else
       return emitError(loc, "subfield requires bundle operand ");
     if (!indexV)
@@ -1924,6 +1926,11 @@ ParseResult FIRStmtParser::parsePostFixFieldId(Value &result) {
       NamedAttribute attrs = {getConstants().indexIdentifier,
                               builder.getI32IntegerAttr(indexNo)};
       subResult = emitCachedSubAccess<RefSubOp>(result, attrs, indexNo, loc);
+    } else if (isa<InstanceType>(result.getType())) {
+      NamedAttribute attrs = {getConstants().indexIdentifier,
+                              builder.getI32IntegerAttr(indexNo)};
+      subResult =
+          emitCachedSubAccess<InstanceSubOp>(result, attrs, indexNo, loc);
     } else {
       NamedAttribute attrs = {getConstants().fieldIndexIdentifier,
                               builder.getI32IntegerAttr(indexNo)};
@@ -3325,24 +3332,12 @@ ParseResult FIRStmtParser::parseInstance() {
   auto annotations = getConstants().emptyArrayAttr;
   SmallVector<Attribute, 4> portAnnotations(modulePorts.size(), annotations);
 
-  StringAttr sym = {};
   auto result = builder.create<InstanceOp>(
       referencedModule, id, NameKindEnum::InterestingName,
-      annotations.getValue(), portAnnotations, false, sym);
+      annotations.getValue(), portAnnotations, false);
 
-  // Since we are implicitly unbundling the instance results, we need to keep
-  // track of the mapping from bundle fields to results in the unbundledValues
-  // data structure.  Build our entry now.
-  UnbundledValueEntry unbundledValueEntry;
-  unbundledValueEntry.reserve(modulePorts.size());
-  for (size_t i = 0, e = modulePorts.size(); i != e; ++i)
-    unbundledValueEntry.push_back({modulePorts[i].name, result.getResult(i)});
-
-  // Add it to unbundledValues and add an entry to the symbol table to remember
-  // it.
-  moduleContext.unbundledValues.push_back(std::move(unbundledValueEntry));
-  auto entryId = UnbundledID(moduleContext.unbundledValues.size());
-  return moduleContext.addSymbolEntry(id, entryId, startTok.getLoc());
+  return moduleContext.addSymbolEntry(id, result.getResult(),
+                                      startTok.getLoc());
 }
 
 /// cmem ::= 'cmem' id ':' type info?

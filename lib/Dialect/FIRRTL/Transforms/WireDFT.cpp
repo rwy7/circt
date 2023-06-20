@@ -369,7 +369,7 @@ void WireDFTPass::runOnOperation() {
     auto instance = cast<InstanceOp>(*instanceNode->getInstance());
     auto clone = instance.cloneAndInsertPorts({port});
     instanceGraph.replaceInstance(instance, clone);
-    instance->replaceAllUsesWith(clone.getResults().drop_back());
+    instance->replaceAllUsesWith(clone);
     instance->erase();
     return clone;
   };
@@ -420,7 +420,8 @@ void WireDFTPass::runOnOperation() {
       auto clone = insertPortIntoInstance(instanceNode, {portNo, portInfo});
 
       // Set up for the next iteration.
-      signal = clone.getResult(portNo);
+      signal =
+          OpBuilder(clone).create<InstanceSubOp>(clone.getLoc(), clone, portNo);
       node = instanceNode->getParent();
     }
 
@@ -460,22 +461,22 @@ void WireDFTPass::runOnOperation() {
         auto signal = getSignal(parent);
         auto builder = ImplicitLocOpBuilder::atBlockEnd(module->getLoc(),
                                                         module.getBodyBlock());
-        emitConnect(builder, clone.getResult(portNo), signal);
+        auto port = builder.create<InstanceSubOp>(clone, portNo);
+        emitConnect(builder, port, signal);
       }
 
       return arg;
     };
 
     // Wire the signal to each clock gate using the helper above.
-    for (auto *instance : targets) {
-      auto *parent = instance->getParent();
+    for (auto *target : targets) {
+      auto *parent = target->getParent();
       auto module = cast<FModuleOp>(*parent->getModule());
       auto builder = ImplicitLocOpBuilder::atBlockEnd(module->getLoc(),
                                                       module.getBodyBlock());
-      emitConnect(
-          builder,
-          cast<InstanceOp>(*instance->getInstance()).getResult(targetPortNo),
-          getSignal(parent));
+      auto instance = cast<InstanceOp>(*target->getInstance());
+      auto port = builder.template create<InstanceSubOp>(instance, targetPortNo);
+      emitConnect(builder, port, getSignal(parent));
     }
     return success();
   };

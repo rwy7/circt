@@ -53,6 +53,22 @@ static LogicalResult customTypePrinter(Type type, AsmPrinter &os) {
   };
   bool anyFailed = false;
   TypeSwitch<Type>(type)
+      .Case<InstanceType>([&](auto instanceType) {
+        os << "instance<";
+        os.printSymbolName(instanceType.getModuleName());
+        os << "(";
+        bool first = true;
+        for (const auto &element : instanceType.getElements()) {
+          if (!first)
+            os << ", ";
+          os << element.direction << " ";
+          os.printKeywordOrString(element.name);
+          os << " : ";
+          printNestedType(element.type, os);
+          first = false;
+        }
+        os << ")>";
+      })
       .Case<ClockType>([&](auto) { os << "clock"; })
       .Case<ResetType>([&](auto) { os << "reset"; })
       .Case<AsyncResetType>([&](auto) { os << "asyncreset"; })
@@ -172,6 +188,7 @@ void circt::firrtl::printNestedType(Type type, AsmPrinter &os) {
 ///   ::= vector '<' type ',' int '>'
 ///   ::= const '.' type
 ///   ::= 'property.' firrtl-phased-type
+///   ::= 'instance<' id '(' (instance-elt (',' instance-elt)*)? ')>'
 /// bundle-elt ::= identifier flip? ':' type
 /// enum-elt ::= identifier ':' type
 /// ```
@@ -409,6 +426,49 @@ static OptionalParseResult customTypeParser(AsmParser &parser, StringRef name,
     return result =
                BaseTypeAliasType::get(StringAttr::get(context, name), type),
            success();
+  }
+  if (name.equals("instance")) {
+    if (isConst) {
+      parser.emitError(parser.getNameLoc(), "instance cannot be const");
+      return failure();
+    }
+
+    StringAttr moduleName;
+    if (parser.parseLess() || parser.parseSymbolName(moduleName))
+      return failure();
+
+    SmallVector<InstanceElement> elements;
+    auto parseInstanceElement = [&]() -> ParseResult {
+      // Parse port direction.
+      Direction direction;
+      if (succeeded(parser.parseOptionalKeyword("out")))
+        direction = Direction::Out;
+      else if (succeeded(parser.parseKeyword("in", "or 'out'")))
+        direction = Direction::In;
+      else
+        return failure();
+
+      // Parse port name.
+      std::string keyword;
+      if (parser.parseKeywordOrString(&keyword))
+        return failure();
+      StringAttr name = StringAttr::get(parser.getContext(), keyword);
+
+      // Parse port type.
+      FIRRTLType type;
+      if (parser.parseColon() || parseNestedType(type, parser))
+        return failure();
+
+      elements.emplace_back(name, type, direction);
+      return success();
+    };
+
+    if (parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Paren,
+                                       parseInstanceElement))
+      return failure();
+
+    result = InstanceType::get(moduleName, elements);
+    return success();
   }
 
   return {};
@@ -1199,6 +1259,15 @@ Type firrtl::getPassiveType(Type anyBaseFIRRTLType) {
   return cast<FIRRTLBaseType>(anyBaseFIRRTLType).getPassiveType();
 }
 
+bool firrtl::isTypeInOut(Type type) {
+  return llvm::TypeSwitch<Type, bool>(type)
+      .Case<FIRRTLBaseType>([](auto type) {
+        return !type.containsReference() &&
+               (!type.isPassive() || type.containsAnalog());
+      })
+      .Default(false);
+}
+
 //===----------------------------------------------------------------------===//
 // IntType
 //===----------------------------------------------------------------------===//
@@ -1736,6 +1805,7 @@ bool OpenBundleType::isConst() { return getImpl()->isConst; }
 OpenBundleType::ElementType
 OpenBundleType::getElementTypePreservingConst(size_t index) {
   auto type = getElementType(index);
+  llvm::errs() << "!!!!!!!! " << type << "\n";
   // TODO: ConstTypeInterface / Trait ?
   return TypeSwitch<FIRRTLType, ElementType>(type)
       .Case<FIRRTLBaseType, OpenBundleType, OpenVectorType>([&](auto type) {
@@ -2432,6 +2502,239 @@ AsyncResetType AsyncResetType::getConstType(bool isConst) {
 }
 
 //===----------------------------------------------------------------------===//
+// InstanceTypeStorage
+//===----------------------------------------------------------------------===//
+
+static uint64_t getMaxFieldID(Type type) {
+  if (auto t = dyn_cast<FIRRTLBaseType>(type))
+    return t.getMaxFieldID();
+
+  // fallback assumption for foreign types: no subfields.
+  return 0;
+}
+
+struct firrtl::detail::InstanceTypeStorage : public TypeStorage {
+  using KeyTy = std::tuple<FlatSymbolRefAttr, ArrayRef<InstanceElement>>;
+
+  static InstanceTypeStorage *construct(TypeStorageAllocator &allocator,
+                                        const KeyTy &key) {
+    auto *storage = allocator.allocate<InstanceTypeStorage>();
+    auto [moduleName, elements] = key;
+    return new (storage) InstanceTypeStorage(allocator, moduleName, elements);
+  }
+
+  InstanceTypeStorage(TypeStorageAllocator &allocator,
+                      FlatSymbolRefAttr moduleName,
+                      ArrayRef<InstanceElement> elements)
+      : moduleName(moduleName), elements(), fieldIDs(), maxFieldID(0) {
+    uint64_t fieldID = 0;
+    SmallVector<uint64_t> fieldIDs;
+    fieldIDs.reserve(elements.size());
+    for (auto &element : elements) {
+      fieldID += 1;
+      fieldIDs.push_back(fieldID);
+      // Increment the field ID for the next field by the number of subfields.
+      fieldID += getMaxFieldID(element.type);
+    }
+    maxFieldID = fieldID;
+    this->fieldIDs = allocator.copyInto(ArrayRef(fieldIDs));
+    this->elements = allocator.copyInto(elements);
+  }
+
+  FlatSymbolRefAttr getModuleName() const { return moduleName; }
+
+  ArrayRef<InstanceElement> getElements() const { return elements; }
+
+  bool operator==(KeyTy key) const {
+    auto [otherModuleName, otherElements] = key;
+    return moduleName == otherModuleName && elements == otherElements;
+  }
+
+  FlatSymbolRefAttr moduleName;
+  ArrayRef<InstanceElement> elements;
+  ArrayRef<uint64_t> fieldIDs;
+  uint64_t maxFieldID;
+};
+
+//===----------------------------------------------------------------------===//
+// InstanceType
+//===----------------------------------------------------------------------===//
+
+InstanceType InstanceType::get(FlatSymbolRefAttr moduleName,
+                               ArrayRef<InstanceElement> elements) {
+  return Base::get(moduleName.getContext(), moduleName, elements);
+}
+
+InstanceType InstanceType::get(StringAttr moduleName,
+                               ArrayRef<InstanceElement> elements) {
+  return get(FlatSymbolRefAttr::get(moduleName), elements);
+}
+
+InstanceType InstanceType::get(FModuleLike module) {
+  auto numPorts = module.getNumPorts();
+  SmallVector<InstanceElement> elements;
+  elements.reserve(numPorts);
+  for (unsigned i = 0; i < numPorts; ++i)
+    elements.push_back({module.getPortNameAttr(i), module.getPortType(i),
+                        module.getPortDirection(i)});
+  return get(module.getModuleNameAttr(), elements);
+}
+
+FlatSymbolRefAttr InstanceType::getModuleNameAttr() const {
+  return getImpl()->moduleName;
+}
+
+StringRef InstanceType::getModuleName() const {
+  return getModuleNameAttr().getValue();
+}
+
+ArrayRef<InstanceElement> InstanceType::getElements() const {
+  return getImpl()->getElements();
+}
+
+const InstanceElement &InstanceType::getElement(IntegerAttr index) const {
+  return getElement(index.getValue().getZExtValue());
+}
+
+const InstanceElement &InstanceType::getElement(size_t index) const {
+  return getElements()[index];
+}
+
+std::optional<uint64_t>
+InstanceType::getElementIndex(StringRef fieldName) const {
+  for (const auto [i, e] : llvm::enumerate(getElements()))
+    if (fieldName == e.name)
+      return i;
+  return {};
+}
+
+uint64_t InstanceType::getFieldID(uint64_t index) const {
+  return getImpl()->fieldIDs[index];
+}
+
+uint64_t InstanceType::getIndexForFieldID(uint64_t fieldID) const {
+  assert(!getElements().empty() && "Instance must have >0 fields");
+  auto fieldIDs = getImpl()->fieldIDs;
+  auto *it = std::prev(llvm::upper_bound(fieldIDs, fieldID));
+  return std::distance(fieldIDs.begin(), it);
+}
+
+LogicalResult
+InstanceType::verifyAgainstModule(function_ref<InFlightDiagnostic()> emitError,
+                                  FModuleLike module) const {
+  // This check is probably not required, but done for sanity.
+  auto name = getModuleNameAttr().getAttr();
+  auto expectedName = module.getModuleNameAttr();
+  if (name != expectedName)
+    return emitError() << "has wrong name, got" << name << ", expected "
+                       << expectedName;
+
+  auto elements = getElements();
+
+  auto n = elements.size();
+  auto expectedN = module.getNumPorts();
+  if (n != expectedN)
+    return emitError() << "has wrong number of ports, got " << n
+                       << ", expected " << expectedN;
+
+  for (unsigned i = 0; i < n; ++i) {
+    auto element = elements[i];
+
+    auto name = element.name;
+    auto expectedName = module.getPortName(i);
+    if (name != expectedName)
+      return emitError() << "port #" << i << " has wrong name, got '" << name
+                         << "', expected '" << expectedName << "'";
+
+    auto direction = element.direction;
+    auto expectedDirection = module.getPortDirection(i);
+    if (direction != expectedDirection)
+      return emitError() << "port #" << i << " has wrong direction, got "
+                         << direction::toString(direction) << ", expected "
+                         << direction::toString(expectedDirection);
+
+    auto type = element.type;
+    auto expectedType = module.getPortType(i);
+    if (type != expectedType)
+      return emitError() << "port #" << i << "has wrong type, got " << type
+                         << ", expected " << expectedType;
+  }
+
+  return success();
+}
+
+void InstanceType::printModuleInterface(OpAsmPrinter &p,
+                                        ArrayAttr portAnnotations) const {
+  assert(portAnnotations.size() == getNumElements() &&
+         "require a port annotation per array");
+  // format:
+  p.printSymbolName(getModuleName());
+  p << "(";
+  bool first = true;
+  for (auto [element, annos] : llvm::zip(getElements(), portAnnotations)) {
+    if (!first)
+      p << ", ";
+    p << element.direction << " ";
+    p.printKeywordOrString(element.name);
+    p << " : " << element.type;
+    if (!annos.cast<ArrayAttr>().empty())
+      p << " " << annos;
+    first = false;
+  }
+  p << ")";
+}
+
+ParseResult InstanceType::parseModuleInterface(
+    OpAsmParser &parser, InstanceType &result,
+    SmallVectorImpl<Attribute> &portAnnotations) {
+
+  StringAttr moduleName;
+  if (parser.parseSymbolName(moduleName))
+    return failure();
+
+  SmallVector<InstanceElement> elements;
+  if (parser.parseCommaSeparatedList(
+          OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+            // Parse port direction.
+            Direction direction;
+            if (succeeded(parser.parseOptionalKeyword("out")))
+              direction = Direction::Out;
+            else if (succeeded(parser.parseKeyword("in", "or 'out'")))
+              direction = Direction::In;
+            else
+              return failure();
+
+            // Parse port name.
+            std::string keyword;
+            if (parser.parseKeywordOrString(&keyword))
+              return failure();
+            StringAttr name = StringAttr::get(parser.getContext(), keyword);
+
+            // Parse port type.
+            Type type;
+            if (parser.parseColonType(type))
+              return failure();
+
+            elements.emplace_back(name, type, direction);
+
+            // Parse optional annotations.
+            ArrayAttr annos;
+            auto parseResult = parser.parseOptionalAttribute(annos);
+            if (!parseResult.has_value())
+              annos = parser.getBuilder().getArrayAttr({});
+            else if (failed(*parseResult))
+              return failure();
+            portAnnotations.push_back(annos);
+
+            return success();
+          }))
+    return failure();
+
+  result = InstanceType::get(moduleName, elements);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FIRRTLDialect
 //===----------------------------------------------------------------------===//
 
@@ -2442,7 +2745,7 @@ void FIRRTLDialect::registerTypes() {
            // References and open aggregates
            RefType, OpenBundleType, OpenVectorType,
            // Non-Hardware types
-           StringType, BigIntType, ListType, MapType>();
+           InstanceType, StringType, BigIntType, ListType, MapType>();
 }
 
 // Get the bit width for this type, return None  if unknown. Unlike

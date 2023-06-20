@@ -1519,6 +1519,7 @@ struct FIRRTLLowering : public FIRRTLVisitor<FIRRTLLowering, LogicalResult> {
   template <typename ResultOpType, typename... CtorArgTypes>
   LogicalResult setLoweringToLTL(Operation *orig, CtorArgTypes... args);
   Backedge createBackedge(Value orig, Type type);
+  Backedge createBackedge(Type type, Location loc);
   bool updateIfBackedge(Value dest, Value src);
 
   void runWithInsertionPointAtEndOfBlock(std::function<void(void)> fn,
@@ -1577,6 +1578,7 @@ struct FIRRTLLowering : public FIRRTLVisitor<FIRRTLLowering, LogicalResult> {
   LogicalResult visitExpr(SubindexOp op);
   LogicalResult visitExpr(SubaccessOp op);
   LogicalResult visitExpr(SubfieldOp op);
+  LogicalResult visitExpr(InstanceSubOp op);
   LogicalResult visitExpr(VectorCreateOp op);
   LogicalResult visitExpr(BundleCreateOp op);
   LogicalResult visitExpr(FEnumCreateOp op);
@@ -2362,17 +2364,17 @@ LogicalResult FIRRTLLowering::setLowering(Value orig, Value result) {
            "Lowering didn't turn a FIRRTL value into a non-FIRRTL value");
 
 #ifndef NDEBUG
-    auto baseType = getBaseType(origType);
-    auto srcWidth = baseType.getPassiveType().getBitWidthOrSentinel();
-
-    // Caller should pass null value iff this was a zero bit value.
-    if (srcWidth != -1) {
-      if (result)
-        assert((srcWidth != 0) &&
-               "Lowering produced value for zero width source");
-      else
-        assert((srcWidth == 0) &&
-               "Lowering produced null value but source wasn't zero width");
+    if (auto baseType = getBaseType(origType)) {
+      auto srcWidth = baseType.getPassiveType().getBitWidthOrSentinel();
+      // Caller should pass null value iff this was a zero bit value.
+      if (srcWidth != -1) {
+        if (result)
+          assert((srcWidth != 0) &&
+                 "Lowering produced value for zero width source");
+        else
+          assert((srcWidth == 0) &&
+                 "Lowering produced null value but source wasn't zero width");
+      }
     }
 #endif
   } else {
@@ -2434,13 +2436,19 @@ LogicalResult FIRRTLLowering::setLoweringToLTL(Operation *orig,
   return setPossiblyFoldedLowering(orig->getResult(0), result);
 }
 
+/// Creates a backedge of the specified result type.
+Backedge FIRRTLLowering::createBackedge(Type type, Location loc) {
+  auto backedge = backedgeBuilder.get(type, loc);
+  backedges.insert({backedge, backedge});
+  return backedge;
+}
+
 /// Sets the lowering for a value to a backedge of the specified result type.
 /// This is useful for lowering types which cannot pass through a wire, or to
 /// directly materialize values in operations that violate the SSA dominance
 /// constraint.
 Backedge FIRRTLLowering::createBackedge(Value orig, Type type) {
-  auto backedge = backedgeBuilder.get(type, orig.getLoc());
-  backedges.insert({backedge, backedge});
+  auto backedge = createBackedge(type, orig.getLoc());
   (void)setLowering(orig, backedge);
   return backedge;
 }
@@ -2787,6 +2795,8 @@ LogicalResult FIRRTLLowering::visitExpr(SubfieldOp op) {
     return failure();
   return setLowering(op, *result);
 }
+
+LogicalResult FIRRTLLowering::visitExpr(InstanceSubOp op) { return success(); }
 
 LogicalResult FIRRTLLowering::visitExpr(VectorCreateOp op) {
   auto resultType = lowerType(op.getResult().getType());
@@ -3244,14 +3254,14 @@ LogicalResult FIRRTLLowering::visitDecl(MemOp op) {
 LogicalResult FIRRTLLowering::visitDecl(InstanceOp oldInstance) {
   Operation *oldModule =
       circuitState.getInstanceGraph()->getReferencedModule(oldInstance);
-  auto newModule = circuitState.getNewModule(oldModule);
+  auto *newModule = circuitState.getNewModule(oldModule);
   if (!newModule) {
     oldInstance->emitOpError("could not find module [")
         << oldInstance.getModuleName() << "] referenced by instance";
     return failure();
   }
 
-  // If this is a referenced to a parameterized extmodule, then bring the
+  // If this is a reference to a parameterized extmodule, then bring the
   // parameters over to this instance.
   ArrayAttr parameters;
   if (auto oldExtModule = dyn_cast<FExtModuleOp>(oldModule))
@@ -3261,73 +3271,90 @@ LogicalResult FIRRTLLowering::visitDecl(InstanceOp oldInstance) {
   // module.
   SmallVector<PortInfo, 8> portInfo = cast<FModuleLike>(oldModule).getPorts();
 
-  // Build an index from the name attribute to an index into portInfo, so we
-  // can do efficient lookups.
-  llvm::SmallDenseMap<Attribute, unsigned> portIndicesByName;
-  for (unsigned portIdx = 0, e = portInfo.size(); portIdx != e; ++portIdx)
-    portIndicesByName[portInfo[portIdx].name] = portIdx;
-
   // Ok, get ready to create the new instance operation.  We need to prepare
   // input operands.
-  SmallVector<Value, 8> operands;
-  for (size_t portIndex = 0, e = portInfo.size(); portIndex != e; ++portIndex) {
-    auto &port = portInfo[portIndex];
-    auto portType = lowerType(port.type);
-    if (!portType) {
-      oldInstance->emitOpError("could not lower type of port ") << port.name;
+
+  // Count how many drivers there are for each port.
+  SmallDenseMap<unsigned, unsigned> driverCount;
+  oldInstance.eachSubOp([&](InstanceSubOp subOp) {
+    auto index = subOp.getIndex();
+    if (oldInstance.getPortDirection(index) == Direction::Out)
+      return;
+    auto &count = driverCount[index];
+    for (auto *user : subOp->getUsers()) {
+      if (auto connect = dyn_cast<FConnectLike>(user))
+        if (connect && connect.getDest() == subOp)
+          ++count;
+    }
+  });
+
+  SmallVector<Value> operands;
+  for (const auto &[i, elt] : llvm::enumerate(oldInstance.getElements())) {
+    if (elt.isOutput())
+      continue;
+
+    auto oldPortType = elt.type;
+    auto newPortType = lowerType(oldPortType);
+    if (!newPortType) {
+      oldInstance->emitOpError("could not lower type of port ") << elt.name;
       return failure();
     }
 
     // Drop zero bit input/inout ports.
-    if (portType.isInteger(0))
+    if (newPortType.isInteger(0))
       continue;
 
-    // We wire outputs up after creating the instance.
-    if (port.isOutput())
-      continue;
-
-    auto portResult = oldInstance.getResult(portIndex);
-    assert(portResult && "invalid IR, couldn't find port");
-
-    // Directly materialize inputs which are trivially assigned once through a
-    // `StrictConnectOp`.
-    if (port.isInput() && getSingleConnectUserOf(portResult)) {
-      operands.push_back(createBackedge(portResult, portType));
+    if (driverCount.lookup(i) == 1) {
+      operands.push_back(createBackedge(
+          newPortType, UnknownLoc::get(newPortType.getContext())));
       continue;
     }
 
     // If the result has an analog type and is used only by attach op,
     // try eliminating a temporary wire by directly using an attached value.
-    if (isa<AnalogType>(portResult.getType()) && portResult.hasOneUse()) {
-      if (auto attach = dyn_cast<AttachOp>(*portResult.getUsers().begin())) {
-        if (auto source = getSingleNonInstanceOperand(attach)) {
+    if (isa<AnalogType>(elt.type) && driverCount.lookup(i) == 1) {
+      bool success = false;
+      for (auto *user : oldInstance->getUsers()) {
+        auto subOp = cast<InstanceSubOp>(user);
+        if (subOp.getIndex() != i)
+          continue;
+        for (auto *user : subOp->getUsers()) {
+          auto attachOp = dyn_cast<AttachOp>(user);
+          if (!attachOp)
+            continue;
+          auto source = getSingleNonInstanceOperand(attachOp);
+          if (!source)
+            continue;
           auto loweredResult = getPossiblyInoutLoweredValue(source);
           operands.push_back(loweredResult);
-          (void)setLowering(portResult, loweredResult);
-          continue;
+          success = true;
+          break;
         }
+        if (success)
+          break;
       }
+
+      if (success)
+        continue;
     }
 
     // Directly materialize foreign types.
-    if (!isa<FIRRTLType>(port.type)) {
-      operands.push_back(createBackedge(portResult, portType));
+    if (!isa<FIRRTLType>(elt.type)) {
+      operands.push_back(createBackedge(
+          newPortType, UnknownLoc::get(newPortType.getContext())));
       continue;
     }
 
-    // Create a wire for each input/inout operand, so there is
-    // something to connect to.
+    // Create a wire for each input/inout operand, so there is something to
+    // connect to.
     Value wire;
-    if (port.isInOut()) {
-      wire = createTmpWireOp(portType, "." + port.getName().str() + ".wire");
+    auto wireName = StringAttr::get(newPortType.getContext(),
+                                    Twine(".") + elt.name.getValue() + ".wire");
+    if (isTypeInOut(newPortType)) {
+      wire = createTmpWireOp(newPortType, wireName);
     } else {
-      wire = createTmpHWWireOp(portType, "." + port.getName() + ".wire");
+      wire = createTmpHWWireOp(newPortType, wireName);
     }
-
-    // Know that the argument FIRRTL value is equal to this wire, allowing
-    // connects to it to be lowered.
-    (void)setLowering(portResult, wire);
-
     operands.push_back(wire);
   }
 
@@ -3364,18 +3391,25 @@ LogicalResult FIRRTLLowering::visitDecl(InstanceOp oldInstance) {
 
   // Now that we have the new hw.instance, we need to remap all of the users
   // of the outputs/results to the values returned by the instance.
-  unsigned resultNo = 0;
-  for (size_t portIndex = 0, e = portInfo.size(); portIndex != e; ++portIndex) {
-    auto &port = portInfo[portIndex];
-    if (!port.isOutput() || isZeroBitFIRRTLType(port.type))
-      continue;
-
-    Value resultVal = newInstance.getResult(resultNo);
-
-    auto oldPortResult = oldInstance.getResult(portIndex);
-    (void)setLowering(oldPortResult, resultVal);
-    ++resultNo;
+  SmallVector<Value> portLowerings;
+  unsigned inputCount = 0;
+  unsigned resultCount = 0;
+  for (const auto &elt : oldInstance.getElements()) {
+    if (isZeroBitFIRRTLType(elt.type)) {
+      portLowerings.push_back(nullptr);
+    } else if (elt.isInput()) {
+      portLowerings.push_back(operands[inputCount]);
+      ++inputCount;
+    } else {
+      portLowerings.push_back(newInstance.getResult(resultCount));
+      ++resultCount;
+    }
   }
+
+  oldInstance.eachSubOp([&](InstanceSubOp subOp) {
+    (void)setLowering(subOp, portLowerings[subOp.getIndex()]);
+  });
+
   return success();
 }
 
@@ -3572,9 +3606,9 @@ LogicalResult FIRRTLLowering::lowerBinOpToVariadic(Operation *op) {
   return setLoweringTo<ResultOpType>(op, lhs, rhs, true);
 }
 
-/// Element-wise logical operations can be lowered into bitcast and normal comb
-/// operations. Eventually we might want to introduce elementwise operations
-/// into HW/SV level as well.
+/// Element-wise logical operations can be lowered into bitcast and normal
+/// comb operations. Eventually we might want to introduce elementwise
+/// operations into HW/SV level as well.
 template <typename ResultOpType>
 LogicalResult FIRRTLLowering::lowerElementwiseLogicalOp(Operation *op) {
   auto resultType = op->getResult(0).getType();
@@ -3956,10 +3990,10 @@ LogicalResult FIRRTLLowering::visitExpr(MuxPrimOp op) {
 Value FIRRTLLowering::createArrayIndexing(Value array, Value index) {
 
   auto size = hw::type_cast<hw::ArrayType>(array.getType()).getSize();
-  // Extend to power of 2.  FIRRTL semantics say out-of-bounds access result in
-  // an indeterminate value.  Existing chisel code depends on this behavior
-  // being "return index 0".  Ideally, we would tail extend the array to improve
-  // optimization.
+  // Extend to power of 2.  FIRRTL semantics say out-of-bounds access result
+  // in an indeterminate value.  Existing chisel code depends on this behavior
+  // being "return index 0".  Ideally, we would tail extend the array to
+  // improve optimization.
   if (!llvm::isPowerOf2_64(size)) {
     auto extElem = getOrCreateIntConstant(APInt(llvm::Log2_64_Ceil(size), 0));
     auto extValue = builder.create<hw::ArrayGetOp>(array, extElem);
@@ -4054,8 +4088,8 @@ LogicalResult FIRRTLLowering::visitStmt(SkipOp op) {
 /// updating the input operand to be `srcVal`. Returns true if the update was
 /// made and the connection can be considered lowered. Returns false if the
 /// destination isn't a wire or register with an input operand to be updated.
-/// Returns failure if the destination is a subaccess operation. These should be
-/// transposed to the right-hand-side by a pre-pass.
+/// Returns failure if the destination is a subaccess operation. These should
+/// be transposed to the right-hand-side by a pre-pass.
 FailureOr<bool> FIRRTLLowering::lowerConnect(Value destVal, Value srcVal) {
   return TypeSwitch<Operation *, FailureOr<bool>>(destVal.getDefiningOp())
       .Case<hw::WireOp>([&](auto op) {
@@ -4378,10 +4412,10 @@ LogicalResult FIRRTLLowering::lowerVerificationStatement(
         loweredValue = getOrCreateIntConstant(1, 0);
       }
       // Wrap any message ops in $sampled() to guarantee that these will print
-      // with the same value as when the assertion triggers.  (See SystemVerilog
-      // 2017 spec section 16.9.3 for more information.)  The custom
-      // "ifElseFatal" variant is special cased because this isn't actually a
-      // concurrent assertion.
+      // with the same value as when the assertion triggers.  (See
+      // SystemVerilog 2017 spec section 16.9.3 for more information.)  The
+      // custom "ifElseFatal" variant is special cased because this isn't
+      // actually a concurrent assertion.
       auto format = op->getAttrOfType<StringAttr>("format");
       if (isConcurrent && (!format || format.getValue() != "ifElseFatal" ||
                            circuitState.emitChiselAssertsAsSVA))
@@ -4552,8 +4586,8 @@ LogicalResult FIRRTLLowering::visitStmt(AttachOp op) {
   if (inoutValues.size() < 2)
     return success();
 
-  // If the op has a single source value, the value is used as a lowering result
-  // of other values. Therefore we can delete the attach op here.
+  // If the op has a single source value, the value is used as a lowering
+  // result of other values. Therefore we can delete the attach op here.
   if (getSingleNonInstanceOperand(op))
     return success();
 
@@ -4652,8 +4686,8 @@ LogicalResult FIRRTLLowering::fixupLTLOps() {
         return failure();
       assert(types.size() == op->getNumResults());
 
-      // Update the result types and add the dependent ops into the worklist if
-      // the type changed.
+      // Update the result types and add the dependent ops into the worklist
+      // if the type changed.
       for (auto [result, type] : llvm::zip(op->getResults(), types)) {
         if (result.getType() == type)
           continue;

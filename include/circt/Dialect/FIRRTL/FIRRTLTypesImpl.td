@@ -16,6 +16,8 @@
 include "FIRRTLDialect.td"
 include "circt/Dialect/HW/HWTypeInterfaces.td"
 
+def MutableTypeTrait : NativeTypeTrait<"IsMutable">;
+
 // Base class for other typedefs. Provides dialact-specific defaults.
 class FIRRTLImplType<string name,
                      list<Trait> traits = [],
@@ -534,6 +536,76 @@ def BaseTypeAliasImpl : FIRRTLImplType<"BaseTypeAlias", [FieldIDTypeInterface],
 //===----------------------------------------------------------------------===//
 // Non-Hardware Type Definitions
 //===----------------------------------------------------------------------===//
+
+def InstanceImpl : FIRRTLImplType<"Instance", [MutableTypeTrait],
+    "circt::firrtl::FIRRTLType"> {
+  let summary = [{
+    An instance of a module.
+
+    Example:
+    ```mlir
+    !firrtl.instance<@Module(in p0: !firrtl.uint<8>, out p1: !firrtl.uint<8>)>
+    ```
+
+    Recursive Example:
+    ```mlir
+    !firrtl.instance<@MyMod(out self: !firrtl.instance<@MyMod>)>
+    ```
+  }];
+  let parameters = (ins
+    FlatSymbolRefAttr:$moduleName,
+    ArrayRefParameter<"InstanceElement">:$elements
+  );
+  let genStorageClass = false;
+  let storageClass = "InstanceTypeStorage";
+  let genAccessors = false;
+  let skipDefaultBuilders = true;
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "FlatSymbolRefAttr":$moduleName,
+                                        "ArrayRef<InstanceElement>":$elements)>,
+    TypeBuilderWithInferredContext<(ins "StringAttr":$moduleName,
+                                        "ArrayRef<InstanceElement>":$elements)>,
+    TypeBuilderWithInferredContext<(ins "FModuleLike":$module)>
+  ];
+  let extraClassDeclaration = [{
+    FlatSymbolRefAttr getModuleNameAttr() const;
+    StringRef getModuleName() const;
+
+    size_t getNumElements() const { return getElements().size(); }
+    ArrayRef<InstanceElement> getElements() const;
+    const InstanceElement &getElement(IntegerAttr index) const;
+    const InstanceElement &getElement(size_t index) const;
+
+    std::optional<uint64_t> getElementIndex(StringRef fieldName) const;
+
+    /// Get an integer ID for the field. Field IDs start at 1, and are assigned
+    /// to each field in a instance type in a recursive pre-order walk of all
+    /// fields, visiting all nested aggregate fields.  A field ID of 0 is used
+    /// to reference the bundle itself. The ID can be used to uniquely identify
+    /// any specific field in this bundle.
+    uint64_t getFieldID(uint64_t index) const;
+
+    /// Find the element index corresponding to the desired fieldID.  If the
+    /// fieldID corresponds to a field in a nested aggregate, it will return the
+    /// index of the parent field.
+    uint64_t getIndexForFieldID(uint64_t fieldID) const;
+
+    /// Verify this type against the given module.
+    LogicalResult verifyAgainstModule(
+      function_ref<InFlightDiagnostic()> emitError, FModuleLike module) const;
+
+    /// Helper to print this type as a module interface.
+    /// Example:
+    /// ```
+    /// @MyModule(in %port: !firrtl.uint<8>, out o: !firrtl.uint<8>)
+    /// ```
+    void printModuleInterface(OpAsmPrinter &p, ArrayAttr portAnnotations) const;
+
+    /// Helper to parse this type as a module interface.
+    static ParseResult parseModuleInterface(OpAsmParser &parser,
+      InstanceType &result, SmallVectorImpl<Attribute> &portAnnotations);
+  }];
+}
 
 def StringImpl : FIRRTLImplType<"String", [], "circt::firrtl::FIRRTLType"> {
   let summary = [{

@@ -534,16 +534,14 @@ void IMConstPropPass::markInstanceOp(InstanceOp instance) {
   // If this is an extmodule, just remember that any results and inouts are
   // overdefined.
   if (!isa<FModuleOp>(op)) {
-    auto module = dyn_cast<FModuleLike>(op);
-    for (size_t resultNo = 0, e = instance.getNumResults(); resultNo != e;
-         ++resultNo) {
-      auto portVal = instance.getResult(resultNo);
+    for (auto *user : instance->getUsers()) {
+      auto subOp = cast<InstanceSubOp>(user);
+      auto index = subOp.getIndex();
       // If this is an input to the extmodule, we can ignore it.
-      if (module.getPortDirection(resultNo) == Direction::In)
+      if (instance.getElement(index).direction == Direction::In)
         continue;
-
       // Otherwise this is a result from it or an inout, mark it as overdefined.
-      markOverdefined(portVal);
+      markOverdefined(subOp);
     }
     return;
   }
@@ -554,23 +552,23 @@ void IMConstPropPass::markInstanceOp(InstanceOp instance) {
 
   // Ok, it is a normal internal module reference.  Populate
   // resultPortToInstanceResultMapping, and forward any already-computed values.
-  for (size_t resultNo = 0, e = instance.getNumResults(); resultNo != e;
-       ++resultNo) {
-    auto instancePortVal = instance.getResult(resultNo);
+  for (auto *user : instance->getUsers()) {
+    auto subOp = cast<InstanceSubOp>(user);
+    auto index = subOp.getIndex();
     // If this is an input to the instance, it will
     // get handled when any connects to it are processed.
-    if (fModule.getPortDirection(resultNo) == Direction::In)
+    if (instance.getElement(index).direction == Direction::In)
       continue;
 
     // Otherwise we have a result from the instance.  We need to forward results
     // from the body to this instance result's SSA value, so remember it.
-    BlockArgument modulePortVal = fModule.getArgument(resultNo);
+    BlockArgument modulePortVal = fModule.getArgument(index);
 
-    resultPortToInstanceResultMapping[modulePortVal].push_back(instancePortVal);
+    resultPortToInstanceResultMapping[modulePortVal].push_back(subOp);
 
     // If there is already a value known for modulePortVal make sure to forward
     // it here.
-    mergeLatticeValue(instancePortVal, modulePortVal);
+    mergeLatticeValue(subOp, modulePortVal);
   }
 }
 
@@ -667,9 +665,11 @@ void IMConstPropPass::visitConnectLike(FConnectLike connect,
     if (isWireOrReg(dest.getOwner()))
       return mergeLatticeValue(fieldRefDestConnected, srcValue);
 
-    // Driving an instance argument port drives the corresponding argument
+    // Driving an instance port drives the corresponding argument
     // of the referenced module.
-    if (auto instance = dest.getDefiningOp<InstanceOp>()) {
+    if (auto instanceSubOp = dest.getDefiningOp<InstanceSubOp>()) {
+      auto instance =
+          cast<InstanceOp>(instanceSubOp.getInput().getDefiningOp());
       // Update the dest, when its an instance op.
       mergeLatticeValue(fieldRefDestConnected, srcValue);
       auto module =
@@ -677,7 +677,7 @@ void IMConstPropPass::visitConnectLike(FConnectLike connect,
       if (!module)
         return;
 
-      BlockArgument modulePortVal = module.getArgument(dest.getResultNumber());
+      BlockArgument modulePortVal = module.getArgument(instanceSubOp.getIndex());
 
       return mergeLatticeValue(
           FieldRef(modulePortVal, fieldRefDestConnected.getFieldID()),
@@ -953,7 +953,8 @@ void IMConstPropPass::rewriteModuleBody(FModuleOp module) {
 
     // We only fold single-result ops and instances in practice, because they
     // are the expressions.
-    if (op.getNumResults() != 1 && !isa<InstanceOp>(op))
+    if (auto instance = dyn_cast<InstanceOp>(op);
+        instance && instance.getNumElements() != 1)
       continue;
 
     // If this operation is already dead, then go ahead and remove it.
