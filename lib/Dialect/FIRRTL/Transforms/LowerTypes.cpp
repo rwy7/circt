@@ -589,8 +589,8 @@ bool TypeLoweringVisitor::lowerProducer(
   auto srcFType = dyn_cast<FIRRTLType>(srcType);
   if (!srcFType)
     return false;
-  SmallVector<FlatBundleFieldEntry, 8> fieldTypes;
 
+  SmallVector<FlatBundleFieldEntry, 8> fieldTypes;
   if (!peelType(srcFType, fieldTypes, aggregatePreservationMode))
     return false;
 
@@ -1274,6 +1274,9 @@ bool TypeLoweringVisitor::visitExpr(RefResolveOp op) {
 }
 
 bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
+  // Technically, the instance is a single aggregate value, where each field
+  // corresponds to a port. We are flattening each aggregate port into multiple
+  // atomic ports, but the instance itself continues to be an aggregate.
   bool skip = true;
   auto oldInstanceType = op.getType();
   auto oldPortAnno = op.getPortAnnotations();
@@ -1288,7 +1291,7 @@ bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
 
   for (size_t i = 0, e = oldInstanceType.getNumElements(); i != e; ++i) {
     auto oldElement = oldInstanceType.getElement(i);
-    auto oldType = oldElement.type.cast<FIRRTLType>();
+    auto oldType = cast<FIRRTLType>(oldElement.type);
 
     // Flatten any nested bundle types the usual way.
     SmallVector<FlatBundleFieldEntry, 8> fieldTypes;
@@ -1321,11 +1324,12 @@ bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
     return false;
   }
 
-  // FIXME: annotation update
   auto newType =
-      builder->getType<InstanceType>(op.getModuleNameAttr(), newElements);
+      InstanceType::get(op.getModuleNameAttr().getAttr(), newElements);
+
+  // FIXME: annotation update
   auto newInstance = builder->create<InstanceOp>(
-      newType, op.getNameAttr(), op.getNameKindAttr(), op.getAnnotations(),
+      newType, op.getNameAttr(), op.getNameKindAttr(), op.getAnnotationsAttr(),
       builder->getArrayAttr(newPortAnno), op.getLowerToBindAttr(),
       sym ? hw::InnerSymAttr::get(sym) : hw::InnerSymAttr());
 
@@ -1340,20 +1344,34 @@ bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
     newAttrs.push_back(i);
   newInstance->setAttrs(newAttrs);
 
-  SmallVector<Value> lowered;
-  for (size_t aggIndex = 0, eAgg = op.getNumResults(); aggIndex != eAgg;
-       ++aggIndex) {
-    lowered.clear();
-    for (size_t fieldIndex = endFields[aggIndex],
-                eField = endFields[aggIndex + 1];
-         fieldIndex < eField; ++fieldIndex)
-      lowered.push_back(newInstance.getResult(fieldIndex));
-    if (lowered.size() != 1 ||
-        op.getType(aggIndex) != resultTypes[endFields[aggIndex]])
-      processUsers(op.getResult(aggIndex), lowered);
-    else
-      op.getResult(aggIndex).replaceAllUsesWith(lowered[0]);
+  // Update the users (InstanceSubOps) to point to the new instance, updating
+  // their indices to point at the correct port. If a port was peeled, the user
+  // will be smeared into multiple sub-ops, one per top-level field in the port.
+  for (auto *user : op->getUsers()) {
+    auto subOp = cast<InstanceSubOp>(user);
+    auto index = subOp.getIndex();
+    auto fieldIdx = endFields[index];
+    auto fieldEnd = endFields[index + 1];
+    auto n = fieldEnd - fieldIdx;
+    SmallVector<Value> mapping(n, nullptr);
+    for (auto i = 0; i < n; ++i)
+      mapping[i] = builder->create<InstanceSubOp>(newInstance, i + fieldIdx);
+
+    // If the port didn't get peeled, just replace-all-uses.
+    if (mapping.size() == 1) {
+      auto oldType = subOp.getType();
+      auto newType = newInstance.getElement(fieldIdx).type;
+      if (oldType == newType) {
+        subOp.replaceAllUsesWith(mapping[0]);
+        subOp.erase();
+        continue;
+      }
+    }
+
+    // If the port was peeled / did change, we must update all users.
+    processUsers(subOp, mapping);
   }
+
   return true;
 }
 

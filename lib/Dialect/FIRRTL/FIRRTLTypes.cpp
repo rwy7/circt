@@ -2118,6 +2118,18 @@ struct firrtl::detail::InstanceTypeStorage : public TypeStorage {
 
   InstanceTypeStorage(FlatSymbolRefAttr moduleName)
       : moduleName(moduleName), elements() {
+
+  }
+
+  bool initialized() const { return elements.data() != nullptr; }
+
+  LogicalResult mutate(TypeStorageAllocator &allocator,
+                       ArrayRef<InstanceElement> newElements) {
+    if (elements.data() != nullptr)
+      return success(elements == newElements);
+
+    elements = allocator.copyInto(newElements);
+
     uint64_t fieldID = 0;
     fieldIDs.reserve(elements.size());
     for (auto &element : elements) {
@@ -2128,14 +2140,7 @@ struct firrtl::detail::InstanceTypeStorage : public TypeStorage {
       fieldID += getMaxFieldID(type);
     }
     maxFieldID = fieldID;
-  }
 
-  LogicalResult mutate(TypeStorageAllocator &allocator,
-                       ArrayRef<InstanceElement> newElements) {
-    if (elements.data() != nullptr)
-      return success(elements == newElements);
-
-    elements = allocator.copyInto(newElements);
     return success();
   }
 
@@ -2155,6 +2160,30 @@ struct firrtl::detail::InstanceTypeStorage : public TypeStorage {
 // InstanceType
 //===----------------------------------------------------------------------===//
 
+InstanceType InstanceType::get(FlatSymbolRefAttr moduleName) {
+  return Base::get(moduleName.getContext(), moduleName);
+}
+
+InstanceType InstanceType::get(FlatSymbolRefAttr moduleName,
+                               ArrayRef<InstanceElement> elements) {
+  auto type = get(moduleName);
+  if (failed(type.initialize(elements)))
+    assert(0 && "failed to initialize type");
+  return type;
+}
+
+InstanceType InstanceType::get(StringAttr moduleName,
+                               ArrayRef<InstanceElement> elements) {
+  return get(FlatSymbolRefAttr::get(moduleName), elements);
+}
+
+bool InstanceType::initialized() const { return getImpl()->initialized(); }
+
+LogicalResult
+InstanceType::initialize(ArrayRef<InstanceElement> elements) {
+  return Base::mutate(elements);
+}
+
 FlatSymbolRefAttr InstanceType::getModuleNameAttr() const {
   return getImpl()->moduleName;
 }
@@ -2167,12 +2196,16 @@ ArrayRef<InstanceElement> InstanceType::getElements() const {
   return getImpl()->getElements();
 }
 
-InstanceElement InstanceType::getElement(IntegerAttr index) const {
+const InstanceElement &InstanceType::getElement(IntegerAttr index) const {
   return getElement(index.getValue().getZExtValue());
 }
 
-InstanceElement InstanceType::getElement(size_t index) const {
+const InstanceElement &InstanceType::getElement(size_t index) const {
   return getElements()[index];
+}
+
+uint64_t InstanceType::getFieldID(uint64_t index) const {
+  return getImpl()->fieldIDs[index];
 }
 
 LogicalResult

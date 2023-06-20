@@ -123,6 +123,14 @@ static InstanceGraphNode *lookupInstNode(InstancePathCache &instancePathCache,
   return instancePathCache.instanceGraph[cast<FExtModuleOp>(mod)];
 }
 
+static void replaceInstance(InstanceOp inst, ArrayRef<Value> values) {
+  inst.eachSubOp([&](auto sub) {
+    sub.replaceAllUsesWith(values[sub.getIndex()]);
+    sub.erase();
+  });
+  inst.erase();
+}
+
 static bool lowerCirctSizeof(InstancePathCache &instancePathCache,
                              FModuleLike mod) {
   auto ports = mod.getPorts();
@@ -137,10 +145,8 @@ static bool lowerCirctSizeof(InstancePathCache &instancePathCache,
     auto inst = cast<InstanceOp>(use->getInstance().getOperation());
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
     auto inputWire = builder.create<WireOp>(ports[0].type).getResult();
-    inst.getResult(0).replaceAllUsesWith(inputWire);
     auto size = builder.create<SizeOfIntrinsicOp>(inputWire);
-    inst.getResult(1).replaceAllUsesWith(size);
-    inst.erase();
+    replaceInstance(inst, {inputWire, size});
   }
   return true;
 }
@@ -158,10 +164,8 @@ static bool lowerCirctIsX(InstancePathCache &instancePathCache,
     auto inst = cast<InstanceOp>(use->getInstance().getOperation());
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
     auto inputWire = builder.create<WireOp>(ports[0].type).getResult();
-    inst.getResult(0).replaceAllUsesWith(inputWire);
     auto size = builder.create<IsXIntrinsicOp>(inputWire);
-    inst.getResult(1).replaceAllUsesWith(size);
-    inst.erase();
+    replaceInstance(inst, {inputWire, size});
   }
   return true;
 }
@@ -181,8 +185,7 @@ static bool lowerCirctPlusArgTest(InstancePathCache &instancePathCache,
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
     auto newop = builder.create<PlusArgsTestIntrinsicOp>(
         param.getValue().cast<StringAttr>());
-    inst.getResult(0).replaceAllUsesWith(newop);
-    inst.erase();
+    replaceInstance(inst, {newop});
   }
   return true;
 }
@@ -202,19 +205,12 @@ static bool lowerCirctPlusArgValue(InstancePathCache &instancePathCache,
   for (auto *use : lookupInstNode(instancePathCache, mod)->uses()) {
     auto inst = cast<InstanceOp>(use->getInstance().getOperation());
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
+    auto foundType = inst.getElement(0).type;
+    auto valueType = inst.getElement(1).type;
+    Type types[] = {foundType, valueType};
     auto newop = builder.create<PlusArgsValueIntrinsicOp>(
-        inst.getResultTypes(), param.getValue().cast<StringAttr>());
-    
-    for (auto *user : inst->getUsers()) {
-      auto subOp = cast<InstanceSubOp>(user);
-      auto index = subOp.getIndex();
-      if (index == 0)
-        subOp.replaceAllUsesWith(newop.getFound());
-      else if (index == 1)
-        subOp.replaceAllUsesWith(newop.getResult());
-      subOp.erase();
-    }
-    inst.erase();
+      types, param.getValue().cast<StringAttr>());
+    replaceInstance(inst, {newop.getFound(), newop.getResult()});
   }
   return true;
 }
@@ -233,14 +229,12 @@ static bool lowerCirctClockGate(InstancePathCache &instancePathCache,
 
   for (auto *use : lookupInstNode(instancePathCache, mod)->uses()) {
     auto inst = cast<InstanceOp>(use->getInstance().getOperation());
+    auto type = inst.getType();
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
-    auto in = builder.create<WireOp>(inst.getResult(0).getType()).getResult();
-    auto en = builder.create<WireOp>(inst.getResult(1).getType()).getResult();
-    inst.getResult(0).replaceAllUsesWith(in);
-    inst.getResult(1).replaceAllUsesWith(en);
+    auto in = builder.create<WireOp>(type.getElement(0).type).getResult();
+    auto en = builder.create<WireOp>(type.getElement(1).type).getResult();
     auto out = builder.create<ClockGateIntrinsicOp>(in, en, Value{});
-    inst.getResult(2).replaceAllUsesWith(out);
-    inst.erase();
+    replaceInstance(inst, {in, en, out});
   }
   return true;
 }

@@ -1329,7 +1329,7 @@ void InstanceOp::build(OpBuilder &builder, OperationState &result,
                        ArrayRef<Attribute> portAnnotations, bool lowerToBind,
                        StringAttr innerSym) {
   auto moduleNameAttr = builder.getAttr<StringAttr>(moduleName);
-  auto instanceType = builder.getType<InstanceType>(moduleNameAttr, elements);
+  auto instanceType = InstanceType::get(moduleNameAttr, elements);
   auto innerSymAttr =
       innerSym ? hw::InnerSymAttr::get(innerSym) : hw::InnerSymAttr();
   build(builder, result, instanceType, name, nameKind, annotations,
@@ -1378,8 +1378,7 @@ void InstanceOp::build(OpBuilder &builder, OperationState &result,
                                        module.getPortType(i),
                                        module.getPortDirection(i)});
   }
-  auto instanceType =
-      builder.getType<InstanceType>(module.getModuleNameAttr(), elements);
+  auto instanceType = InstanceType::get(module.getModuleNameAttr(), elements);
   auto innerSymAttr =
       innerSym ? hw::InnerSymAttr::get(innerSym) : hw::InnerSymAttr();
   return build(builder, result, instanceType, name, nameKind, annotations,
@@ -1412,7 +1411,7 @@ InstanceOp InstanceOp::erasePorts(OpBuilder &builder,
   auto newPortAnnotations =
       removeElementsAtIndices(getPortAnnotations().getValue(), portIndices);
 
-  auto newResultType = builder.getType<InstanceType>(
+  auto newResultType = InstanceType::get(
       getResultType().getModuleNameAttr().getAttr(), newElements);
 
   auto newOp = builder.create<InstanceOp>(
@@ -1484,8 +1483,7 @@ InstanceOp::cloneAndInsertPorts(ArrayRef<std::pair<unsigned, PortInfo>> ports) {
   }
 
   OpBuilder builder(*this);
-  auto newType = builder.getType<InstanceType>(
-      type.getModuleNameAttr().getAttr(), newElements);
+  auto newType = InstanceType::get(type.getModuleNameAttr(), newElements);
   return builder.create<InstanceOp>(getLoc(), newType, getName(), getNameKind(),
                                     getAnnotations().getValue(), newPortAnnos,
                                     getLowerToBind(), getInnerSymAttr());

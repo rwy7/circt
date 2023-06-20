@@ -266,12 +266,40 @@ struct DenseMapInfo<circt::firrtl::FModuleOp> {
 // InstanceOp Inlines
 //===----------------------------------------------------------------------===//
 
+namespace circt::firrtl {
+
+template <typename F, typename R = std::invoke_result_t<F, InstanceSubOp>>
+struct EachSubOp;
+
+/// Specialization supporting LogicalResult and early return.
 template <typename F>
-void circt::firrtl::InstanceOp::eachSubOp(F &&fn) {
-  for (auto *user : (*this)->getUsers()) {
-    auto subOp = mlir::cast<InstanceSubOp>(user);
-    fn(subOp, subOp.getIndex());
+struct EachSubOp<F, mlir::LogicalResult> {
+  mlir::LogicalResult operator()(InstanceOp op, F &&fn) const {
+    for (auto *user : op->getUsers()) {
+      auto subOp = mlir::cast<InstanceSubOp>(user);
+      if (mlir::failed(fn(subOp)))
+        return mlir::failure();
+    }
+    return mlir::success();
   }
+};
+
+/// Specialization when the callback returns void.
+template <typename F>
+struct EachSubOp<F, void> {
+  void operator()(InstanceOp op, F &&fn) const {
+    for (auto *user : op->getUsers()) {
+      auto subOp = mlir::cast<InstanceSubOp>(user);
+      fn(subOp);
+    }
+  }
+};
+
+template <typename F>
+auto circt::firrtl::InstanceOp::eachSubOp(F &&fn) {
+  return EachSubOp<F>()(*this, std::forward<F>(fn));
 }
+
+} // namespace circt::firrtl
 
 #endif // CIRCT_DIALECT_FIRRTL_OPS_H

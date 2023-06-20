@@ -16,6 +16,8 @@
 include "FIRRTLDialect.td"
 include "circt/Dialect/HW/HWTypeInterfaces.td"
 
+def MutableTypeTrait : NativeTypeTrait<"IsMutable">;
+
 // Base class for other typedefs. Provides dialact-specific defaults.
 class FIRRTLImplType<string name,
                      list<Trait> traits = [],
@@ -484,29 +486,50 @@ def RefImpl : FIRRTLImplType<"Ref",
 // Non-Hardware Type Definitions
 //===----------------------------------------------------------------------===//
 
-def InstanceImpl : FIRRTLImplType<"Instance", [], "circt::firrtl::FIRRTLType"> {
+def InstanceImpl : FIRRTLImplType<"Instance", [MutableTypeTrait],
+    "circt::firrtl::FIRRTLType"> {
   let summary = [{
     An instance of a module.
+
+    Example:
+    ```mlir
+    !firrtl.instance<@Module(in p0: !firrtl.uint<8>, out p1: !firrtl.uint<8>)>
+    ```
+
+    Recursive Example:
+    ```mlir
+    !firrtl.instance<@MyMod(out self: !firrtl.instance<@MyMod>)>
+    ```
   }];
-  let parameters =
-    (ins FlatSymbolRefAttr:$moduleName, "ArrayRef<InstanceElement>":$elements);
-  let genStorageClass = false;
+  let parameters = (ins
+    FlatSymbolRefAttr:$moduleName,
+    "ArrayRef<InstanceElement>":$elements
+  );
+  let genStorageClass  =false;
   let storageClass = "InstanceTypeStorage";
   let genAccessors = false;
   let skipDefaultBuilders = true;
   let builders = [
-    TypeBuilder<(ins "StringAttr":$moduleName,
-                     "ArrayRef<InstanceElement>":$elements)>,
-    TypeBuilder<(ins "FModuleLike":$module)>
+    // Build an uninitialized module (fields have not been set).
+    TypeBuilderWithInferredContext<(ins "FlatSymbolRefAttr":$moduleName)>,
+    /// Build a module initialized with fields.
+    TypeBuilderWithInferredContext<(ins "FlatSymbolRefAttr":$moduleName,
+                                        "ArrayRef<InstanceElement>":$elements)>,
+    TypeBuilderWithInferredContext<(ins "StringAttr":$moduleName,
+                                        "ArrayRef<InstanceElement>":$elements)>,
+    TypeBuilderWithInferredContext<(ins "FModuleLike":$module)>
   ];
   let extraClassDeclaration = [{
+    bool initialized() const;
+    LogicalResult initialize(ArrayRef<InstanceElement>);
+  
     FlatSymbolRefAttr getModuleNameAttr() const;
     StringRef getModuleName() const;
 
     size_t getNumElements() const { return getElements().size(); }
     ArrayRef<InstanceElement> getElements() const;
-    InstanceElement getElement(IntegerAttr index) const;
-    InstanceElement getElement(size_t index) const;
+    const InstanceElement &getElement(IntegerAttr index) const;
+    const InstanceElement &getElement(size_t index) const;
 
     /// TODO: Remove this? Will not work with recursive types.
     uint64_t getFieldID(uint64_t index) const;

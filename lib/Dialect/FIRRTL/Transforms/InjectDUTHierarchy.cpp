@@ -201,7 +201,12 @@ void InjectDUTHierarchy::runOnOperation() {
     Value src = subOp;
     if (dut.getPortDirection(i) == Direction::In)
       std::swap(dst, src);
-    emitConnect(b, b.getUnknownLoc(), dst, src);
+    
+    if (isa<PropertyType>(dst.getType())) {
+      b.create<PropAssignOp>(b.getUnknownLoc(), dst, src);
+    } else {
+      emitConnect(b, b.getUnknownLoc(), dst, src);
+    }
   }
 
   // Compute a set of paths that are used _inside_ the wrapper.

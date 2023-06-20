@@ -1727,13 +1727,14 @@ void InferResetsPass::implementAsyncReset(Operation *op, FModuleOp module,
           {{/*portIndex=*/0,
             {domain.newPortName, actualReset.getType().cast<FIRRTLBaseType>(),
              Direction::In}}});
-      instReset = newInstOp.getResult(0);
+      ImplicitLocOpBuilder builder(newInstOp.getLoc(), newInstOp);
+      instReset = builder.create<InstanceSubOp>(newInstOp, 0);
 
       // Update the uses over to the new instance and drop the old instance.
       for (auto *user : instOp->getUsers()) {
         auto subOp = cast<InstanceSubOp>(user);
         auto newSubOp = builder.create<InstanceSubOp>(newInstOp, subOp.getIndex() + 1);
-        subOp.replaceAllUsesWith(newSubOp);
+        subOp->replaceAllUsesWith(newSubOp);
         subOp->erase();
       }
 
@@ -1742,7 +1743,8 @@ void InferResetsPass::implementAsyncReset(Operation *op, FModuleOp module,
       instOp = newInstOp;
     } else if (domain.existingPort.has_value()) {
       auto idx = *domain.existingPort;
-      instReset = instOp.getResult(idx);
+      ImplicitLocOpBuilder builder(instOp.getLoc(), instOp);
+      instReset = builder.create<InstanceSubOp>(instOp, idx);
       LLVM_DEBUG(llvm::dbgs() << "  - Using result #" << idx << " as reset\n");
     }
 

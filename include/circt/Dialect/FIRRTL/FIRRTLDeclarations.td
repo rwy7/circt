@@ -75,6 +75,13 @@ def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firr
                    "ArrayRef<Attribute>":$portAnnotations,
                    "bool":$lowerToBind,
                    "hw::InnerSymAttr":$inner_sym)>,
+    OpBuilder<(ins "InstanceType":$resultType,
+                   "StringAttr":$name,
+                   "NameKindEnumAttr":$nameKind,
+                   "ArrayAttr":$annotations,
+                   "ArrayAttr":$portAnnotations,
+                   "UnitAttr":$lowerToBind,
+                   "hw::InnerSymAttr":$inner_sym)>,
     /// Constructor for when you have the target module in hand.
     OpBuilder<(ins "FModuleLike":$module,
                    "mlir::StringRef":$name,
@@ -98,11 +105,14 @@ def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firr
     /// invalid IR.
     FModuleLike getReferencedModule(SymbolTable& symtbl);
 
+    /// Get a description of each port (or property) that this instance has.
+    ArrayRef<InstanceElement> getElements() { return getType().getElements(); }
+
     /// Get the number of ports (and properties) that this instance has.
-    size_t getNumElements() { return getResultType().getNumElements(); }
+    size_t getNumElements() { return getType().getNumElements(); }
 
     /// Get information about an element (port or property) of this instance.
-    InstanceElement getElement(size_t index) {
+    const InstanceElement &getElement(size_t index) {
       return getResultType().getElement(index);
     }
 
@@ -127,7 +137,7 @@ def InstanceOp : ReferableDeclOp<"instance", [HasParent<"firrtl::FModuleOp, firr
     /// that F should have the type:
     /// `void(InstanceSubOp subOp, size_t portIndex)`
     template <typename F>
-    void eachSubOp(F &&fn);
+    auto eachSubOp(F &&fn);
 
     /// Hooks for port annotations.
     ArrayAttr getPortAnnotation(unsigned portIdx);
