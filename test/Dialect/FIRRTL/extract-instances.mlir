@@ -18,7 +18,9 @@ firrtl.circuit "ExtractBlackBoxesSimple" attributes {annotations = [{class = "fi
   // CHECK-SAME: in %bb_0_out: !firrtl.uint<8>
   firrtl.module private @BBWrapper(in %in: !firrtl.uint<8>, out %out: !firrtl.uint<8>) {
     // CHECK-NOT: firrtl.instance bb @MyBlackBox
-    %bb_in, %bb_out = firrtl.instance bb @MyBlackBox(in in: !firrtl.uint<8>, out out: !firrtl.uint<8>)
+    %bb = firrtl.instance bb @MyBlackBox(in in: !firrtl.uint<8>, out out: !firrtl.uint<8>)
+    %bb_in  = firrtl.instance.sub %bb[in]  : !firrtl.instance<@MyBlackBox(in in: !firrtl.uint<8>, out out: !firrtl.uint<8>)>
+    %bb_out = firrtl.instance.sub %bb[out] : !firrtl.instance<@MyBlackBox(in in: !firrtl.uint<8>, out out: !firrtl.uint<8>)>
     %invalid_ui8 = firrtl.invalidvalue : !firrtl.uint<8>
     firrtl.strictconnect %bb_in, %invalid_ui8 : !firrtl.uint<8>
     // CHECK: firrtl.connect %out, %bb_0_out

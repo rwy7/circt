@@ -349,21 +349,25 @@ circuit MyModule :     ; CHECK: firrtl.circuit "MyModule" {
     reg _t_2622 : UInt<4>, clock with :
       reset => (UInt<1>("h0"), _t_2622)
 
-    ; CHECK: %xyz_in = firrtl.instance xyz interesting_name @circuit(in in: !firrtl.uint<80>)
+    ; CHECK: %xyz = firrtl.instance interesting_name @circuit(in in: !firrtl.uint<80>)
     inst xyz of circuit
+    ; CHECK: [[XYZ_IN:%.+]] = firrtl.instance.sub %xyz[in]
     ; CHECK: [[PAD:%.*]] = firrtl.pad %i8, 80 : (!firrtl.uint<8>) -> !firrtl.uint<80>
-    ; CHECK: firrtl.strictconnect %xyz_in, [[PAD]] : !firrtl.uint<80>
+    ; CHECK: firrtl.strictconnect [[XYZ_IN]], [[PAD]] : !firrtl.uint<80>
     xyz.in <= i8
 
-    ; CHECK: %myext_in, %myext_out = firrtl.instance myext interesting_name @MyExtModule(in in: !firrtl.uint, out out: !firrtl.uint<8>)
+    ; CHECK: %myext = firrtl.instance interesting_name @MyExtModule(in in: !firrtl.uint, out out: !firrtl.uint<8>)
+    ; CHECK-NEXT: [[MYEXT_OUT:%.+]] = firrtl.instance.sub %myext[out]
+    ; CHECK-NEXT: [[MYEXT_IN:%.+]] = firrtl.instance.sub %myext[in]
     inst myext of MyExtModule
     myext.in <= i8
     printf(clock, reset, "Something interesting! %x", myext.out)
 
     ; CHECK: firrtl.when %reset : !firrtl.uint<1> {
     when reset :
-      ; CHECK: %reset_myext_in, %reset_myext_out = firrtl.instance reset_myext interesting_name @MyExtModule(in in: !firrtl.uint, out out: !firrtl.uint<8>)
+      ; CHECK: %reset_myext = firrtl.instance interesting_name @MyExtModule(in in: !firrtl.uint, out out: !firrtl.uint<8>)
       inst reset_myext of MyExtModule
+      ; CHECK: [[RESET_MYEXT_IN:%.+]] = firrtl.instance.sub %reset_myext[in]
       reset_myext.in <= i8
     ; CHECK: }
 
@@ -476,7 +480,7 @@ circuit MyModule :     ; CHECK: firrtl.circuit "MyModule" {
 
   ; CHECK-LABEL: firrtl.module private @expr_stmt_ambiguity2(
   module expr_stmt_ambiguity2 :
-    ; CHECK: firrtl.instance write interesting_name @circuit
+    ; CHECK: %write = firrtl.instance interesting_name @circuit
     inst write of circuit
     ; CHECK: firrtl.strictconnect %write_in
     write.in <= UInt(1)
@@ -800,13 +804,15 @@ circuit MyModule :     ; CHECK: firrtl.circuit "MyModule" {
     wire2 is invalid
 
     ; https://github.com/llvm/circt/issues/563
-    ; CHECK: %U0_in0, %U0_in1, %U0_out0, %U0_out1 = firrtl.instance U0 interesting_name @mod_0_563
+    ; CHECK: %U0 = firrtl.instance interesting_name @mod_0_563
+    ; CHECK: [[U0_IN1:%.+]] = firrtl.instance.sub %U0[in1]
+    ; CHECK: [[U0_IN0:%.+]] = firrtl.instance.sub %U0[in0]
     inst U0 of mod_0_563
 
     ; CHECK: [[INV:%.+]] = firrtl.invalidvalue
-    ; CHECK: firrtl.strictconnect %U0_in0, [[INV]]
+    ; CHECK: firrtl.strictconnect [[U0_IN0]], [[INV]]
     ; CHECK: [[INV:%.+]] = firrtl.invalidvalue : !firrtl.bundle<a: uint<5>>
-    ; CHECK: firrtl.strictconnect %U0_in1, [[INV]]
+    ; CHECK: firrtl.strictconnect [[U0_IN1]], [[INV]]
     U0 is invalid
 
   ; This reference is declared after its first use.
@@ -1219,10 +1225,11 @@ circuit EnumTypes:
     ; CHECK-SAME: out %agg_out: !firrtl.probe<bundle<a: uint<1>, b: const.uint>>
     output agg_out : Probe<{a: UInt<1>, b: const UInt}>
 
-    ; CHECK-NEXT: %[[RC_IN:.+]], %[[RC_R:.+]], %[[RC_RW:.+]] = firrtl.instance rc
+    ; CHECK-NEXT: %rc = firrtl.instance @RefsChild
     inst rc of RefsChild
+    ; CHECK-NEXT firrtl.instance.sub %rc[in]
     rc.in <= in
-    ; CHECK: %[[OUTREF:.+]] = firrtl.ref.send %outconst
+    ; CHECK-NEXT: %[[OUTREF:.+]] = firrtl.ref.send %outconst
     ; CHECK-NEXT: %[[OUTREF_CAST:.+]] = firrtl.ref.cast %[[OUTREF]] : (!firrtl.probe<const.uint<1>>) -> !firrtl.probe<const.uint>
     ; CHECK-NEXT: ref.define %r, %[[OUTREF_CAST]]
     define r = probe(outconst)
@@ -1267,7 +1274,8 @@ circuit EnumTypes:
     ; CHECK-NEXT: ref.define %agg_out, %[[AGG3_PROBE_CAST]]
     define agg_out = probe(agg3)
 
-    ; CHECK: %{{.+}}, %[[REM_R:.+]], %{{.+}}, %[[REM_R2:.+]] = firrtl.instance rem
+    ; CHECK: %rem = firrtl.instance @RefExtMore
+    ; CHECK-NEXT [[REM_R2:.+]] = firrtl.instance.sub %rem[r2]
     ; CHECK-NEXT: %[[REM_R2_1:.+]] = firrtl.ref.sub %[[REM_R2]][1]
     ; CHECK-NEXT: %[[REM_R2_1_A:.+]] = firrtl.ref.sub %[[REM_R2_1]][0]
     ; CHECK-NEXT: %[[READ_REM_R2_1_A:.+]] = firrtl.ref.resolve %[[REM_R2_1_A]]
@@ -1286,10 +1294,10 @@ circuit EnumTypes:
     input clock : Clock
     input cond : UInt<1>
 
-    ; CHECK-NEXT: %{{.+}}, %{{.+}}, %[[RC_RW:.+]] = firrtl.instance rc
+    ; CHECK-NEXT: %rc = firrtl.instance @RefsChild
     inst rc of RefsChild
-    rc.in <= in
 
+    rc.in <= in
     ; Check (const) literal works, even if uninferred width.
     ; Cast reference to more general form as needed.
     ; CHECK: %[[RC_RW_CAST:.+]] = firrtl.ref.cast %[[RC_RW]] : (!firrtl.rwprobe<uint<1>>) -> !firrtl.rwprobe<uint>

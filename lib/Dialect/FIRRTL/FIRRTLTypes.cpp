@@ -1805,7 +1805,6 @@ bool OpenBundleType::isConst() { return getImpl()->isConst; }
 OpenBundleType::ElementType
 OpenBundleType::getElementTypePreservingConst(size_t index) {
   auto type = getElementType(index);
-  llvm::errs() << "!!!!!!!! " << type << "\n";
   // TODO: ConstTypeInterface / Trait ?
   return TypeSwitch<FIRRTLType, ElementType>(type)
       .Case<FIRRTLBaseType, OpenBundleType, OpenVectorType>([&](auto type) {
@@ -2676,7 +2675,7 @@ void InstanceType::printModuleInterface(OpAsmPrinter &p,
       p << ", ";
     p << element.direction << " ";
     p.printKeywordOrString(element.name);
-    p << " : " << element.type;
+    p << ": " << element.type;
     if (!annos.cast<ArrayAttr>().empty())
       p << " " << annos;
     first = false;

@@ -3130,7 +3130,6 @@ ParseResult parseSubfieldLikeOp(OpAsmParser &parser, OperationState &result) {
       "fieldIndex",
       IntegerAttr::get(IntegerType::get(context, 32), *fieldIndex));
 
-  llvm::errs() << "@@@@ " << bundleType << "\n@@@ at " << fieldIndex << "\n";
   SmallVector<Type> inferredReturnTypes;
   if (failed(OpTy::inferReturnTypes(context, result.location, result.operands,
                                     result.attributes.getDictionary(context),
