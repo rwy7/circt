@@ -546,7 +546,6 @@ static bool lowerCirctVerif(InstanceGraph &ig, FModuleLike mod) {
     ImplicitLocOpBuilder builder(inst.getLoc(), inst);
     auto property = builder.create<WireOp>(inst.getElement(0).type).getResult();
     builder.create<Op>(property, label);
-    inst.erase();
     replaceInstance(inst, {property});
   }
   return true;
