@@ -1418,7 +1418,8 @@ SmallVector<Value> InstanceOp::getPortResults(size_t index) {
 /// updates any users of the remaining ports to point at the new instance.
 InstanceOp InstanceOp::erasePorts(OpBuilder &builder,
                                   const llvm::BitVector &portIndices) {
-  assert(portIndices.size() >= getNumElements() &&
+  auto numElements = getNumElements();
+  assert(portIndices.size() >= numElements &&
          "portIndices is not at least as large as getNumResults()");
 
   if (portIndices.none())
@@ -1432,11 +1433,23 @@ InstanceOp InstanceOp::erasePorts(OpBuilder &builder,
   auto newResultType =
       InstanceType::get(getType().getModuleNameAttr().getAttr(), newElements);
 
+  // Build a table mapping old port-indices to new port-indices for any
+  // surviving ports.
+  SmallVector<unsigned> indexTable(numElements);
+  unsigned newIndex = 0;
+  for (unsigned i = 0; i < numElements; ++i) {
+    if (portIndices[i])
+      continue;
+    indexTable[i] = newIndex++;
+  }
+
+  // Create the clone
   auto newOp = builder.create<InstanceOp>(
       getLoc(), newResultType, getName(), getNameKind(),
       getAnnotations().getValue(), newPortAnnotations, getLowerToBind(),
       getInnerSymAttr());
 
+  // Map old InstanceSubOps to new InstanceSubOps using the indexMap.
   for (auto *user : getResult().getUsers()) {
     auto subOp = cast<InstanceSubOp>(user);
     auto portIndex = subOp.getIndex();
@@ -1444,7 +1457,7 @@ InstanceOp InstanceOp::erasePorts(OpBuilder &builder,
       assert(subOp->use_empty() && "removed instance port has uses");
     } else {
       auto newSubOp = builder.create<InstanceSubOp>(
-          subOp.getLoc(), newOp.getResult(), subOp.getIndex());
+          subOp.getLoc(), newOp.getResult(), indexTable[subOp.getIndex()]);
       subOp->replaceAllUsesWith(newSubOp);
     }
     subOp.erase();
@@ -1545,7 +1558,7 @@ void InstanceOp::print(OpAsmPrinter &p) {
     p << ' ' << stringifyNameKindEnum(getNameKindAttr().getValue());
 
   // Omit already printed attributes.
-  SmallVector<StringRef, 5> omittedAttrs = {
+  SmallVector<StringRef, 6> omittedAttrs = {
       "moduleName", "name", "portAnnotations", "inner_sym", "nameKind"};
   if (getAnnotations().empty())
     omittedAttrs.push_back("annotations");
@@ -1592,6 +1605,8 @@ ParseResult InstanceOp::parse(OpAsmParser &parser, OperationState &result) {
   if (InstanceType::parseModuleInterface(parser, type, portAnnotations))
     return failure();
   result.types.push_back(type);
+
+  result.addAttribute("moduleName", type.getModuleNameAttr());
   if (!resultAttrs.get("portAnnotations"))
     result.addAttribute("portAnnotations",
                         ArrayAttr::get(context, portAnnotations));
@@ -4633,6 +4648,9 @@ LogicalResult InstanceSubOp::inferReturnTypes(
     return failure();
 
   auto index = indexAttr.getValue().getZExtValue();
+  if (instanceType.getNumElements() <= index)
+    return failure();
+
   inferredReturnTypes.push_back(instanceType.getElement(index).type);
   return success();
 }

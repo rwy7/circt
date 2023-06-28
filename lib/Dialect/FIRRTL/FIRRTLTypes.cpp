@@ -64,7 +64,7 @@ static LogicalResult customTypePrinter(Type type, AsmPrinter &os) {
           os << element.direction << " ";
           os.printKeywordOrString(element.name);
           os << " : ";
-          printNestedType(element.type, os);
+          os << element.type;
           first = false;
         }
         os << ")>";
@@ -455,8 +455,8 @@ static OptionalParseResult customTypeParser(AsmParser &parser, StringRef name,
       StringAttr name = StringAttr::get(parser.getContext(), keyword);
 
       // Parse port type.
-      FIRRTLType type;
-      if (parser.parseColon() || parseNestedType(type, parser))
+      Type type;
+      if (parser.parseColon() || parser.parseType(type))
         return failure();
 
       elements.emplace_back(name, type, direction);

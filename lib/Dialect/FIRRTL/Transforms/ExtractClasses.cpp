@@ -32,9 +32,8 @@ struct ExtractClassesPass : public ExtractClassesBase<ExtractClassesPass> {
 private:
   void convertValue(Value originalValue, OpBuilder &builder, IRMapping &mapping,
                     SmallVectorImpl<Operation *> &opsToErase);
-  Value getOrCreateObjectFieldValue(OpResult instanceOutput,
-                                    InstanceOp instance, OpBuilder &builder,
-                                    IRMapping &mapping,
+  Value getOrCreateObjectFieldValue(InstanceSubOp instanceSubOp,
+                                    OpBuilder &builder, IRMapping &mapping,
                                     SmallVectorImpl<Operation *> &opsToErase);
   ObjectOp getOrCreateObject(InstanceOp instance, OpBuilder &builder,
                              IRMapping &mapping,
@@ -44,7 +43,7 @@ private:
 
   InstanceGraph *instanceGraph;
   DenseMap<Operation *, llvm::BitVector> portsToErase;
-  DenseMap<OpResult, Value> cachedObjectValues;
+  DenseMap<FieldRef, Value> cachedObjectValues;
   DenseMap<InstanceOp, ObjectOp> cachedObjects;
 };
 } // namespace
@@ -76,25 +75,31 @@ void ExtractClassesPass::convertValue(
   if (!op)
     return;
 
-  // InstanceOps are handled specially, by creating ObjectOps and
-  // extracting an ObjectFieldOp. This will take care of re-using
-  // ObjectOps and ObjectFieldOps, updating the mapping, and keeping
-  // track of related ops that can be erased. The original value is
-  // mapped to the ObjectFieldOp.
+  // InstanceOps and InstanceSubOps are handled specially, by creating ObjectOps
+  // and extracting an ObjectFieldOp. This will take care of re-using ObjectOps
+  // and ObjectFieldOps, updating the mapping, and keeping track of related ops
+  // that can be erased. The original value is mapped to the ObjectFieldOp.
   if (auto instance = dyn_cast<InstanceOp>(op)) {
-    Value fieldValue = getOrCreateObjectFieldValue(
-        cast<OpResult>(originalValue), instance, builder, mapping, opsToErase);
-    mapping.map(originalValue, fieldValue);
-  } else {
-    // For all other ops, copy the defining op into the body, and
-    // map from the old Value to the new Value. This may need to walk
-    // property ops in order to copy them into the ClassOp, but for now
-    // only constant ops exist. Mark the property op to be erased.
-    builder.clone(*op, mapping);
-
-    // Property defining ops should be erased after being copied over.
-    opsToErase.push_back(op);
+    ObjectOp object = getOrCreateObject(instance, builder, mapping, opsToErase);
+    mapping.map(originalValue, object);
+    return;
   }
+
+  if (auto instanceSubOp = dyn_cast<InstanceSubOp>(op)) {
+    Value fieldValue = getOrCreateObjectFieldValue(instanceSubOp, builder,
+                                                   mapping, opsToErase);
+    mapping.map(originalValue, fieldValue);
+    return;
+  }
+
+  // For all other ops, copy the defining op into the body, and
+  // map from the old Value to the new Value. This may need to walk
+  // property ops in order to copy them into the ClassOp, but for now
+  // only constant ops exist. Mark the property op to be erased.
+  builder.clone(*op, mapping);
+
+  // Property defining ops should be erased after being copied over.
+  opsToErase.push_back(op);
 }
 
 /// Helper to get or create a Value from an ObjectFieldOp. This consults a cache
@@ -104,20 +109,23 @@ void ExtractClassesPass::convertValue(
 /// the rest of the pass ensures the correct ClassOp is created.
 /// NOLINTNEXTLINE(misc-no-recursion)
 Value ExtractClassesPass::getOrCreateObjectFieldValue(
-    OpResult instanceOutput, InstanceOp instance, OpBuilder &builder,
-    IRMapping &mapping, SmallVectorImpl<Operation *> &opsToErase) {
+    InstanceSubOp instanceSubOp, OpBuilder &builder, IRMapping &mapping,
+    SmallVectorImpl<Operation *> &opsToErase) {
+
   // Check if this ObjectField has already been created, and return it if so.
-  auto cachedObjectValue = cachedObjectValues.find(instanceOutput);
+  auto fieldRef = getFieldRefFromValue(instanceSubOp);
+  auto cachedObjectValue = cachedObjectValues.find(fieldRef);
   if (cachedObjectValue != cachedObjectValues.end())
     return cachedObjectValue->getSecond();
 
   // Get the result number for the InstanceOp output.
-  unsigned resultNum = instanceOutput.getResultNumber();
+  unsigned resultNum = instanceSubOp.getIndex();
 
   // Get the field type.
-  Type fieldType = instance.getResult(resultNum).getType();
+  Type fieldType = instanceSubOp.getType();
 
   // Get the ObjectOp to extract a field from.
+  InstanceOp instance = cast<InstanceOp>(fieldRef.getDefiningOp());
   ObjectOp object = getOrCreateObject(instance, builder, mapping, opsToErase);
 
   // Get the field path.
@@ -130,7 +138,7 @@ Value ExtractClassesPass::getOrCreateObjectFieldValue(
                                                   object, fieldPath);
 
   // Cache it for potential future lookups.
-  cachedObjectValues[instanceOutput] = fieldValue;
+  cachedObjectValues[fieldRef] = fieldValue;
 
   return fieldValue;
 }
@@ -151,31 +159,47 @@ ObjectOp ExtractClassesPass::getOrCreateObject(
   if (cachedObject != cachedObjects.end())
     return cachedObject->getSecond();
 
+  // Build a sparse mapping from input port indices to class parameter indices.
+  SmallDenseMap<unsigned, unsigned> paramIndexTable;
+  for (auto [i, element] : llvm::enumerate(instance.getElements()))
+    if (element.direction == Direction::In && isa<PropertyType>(element.type))
+      paramIndexTable[i] = paramIndexTable.size();
+
   // Build up the ObjectOp's actual parameters.
   SmallVector<Value> actualParams;
-  for (size_t i = 0; i < instance.getNumResults(); ++i) {
-    // Skip outputs and non-Property inputs.
-    if (instance.getPortDirection(i) == Direction::Out)
+  actualParams.resize(paramIndexTable.size());
+  for (auto *user : instance->getUsers()) {
+    auto subOp = cast<InstanceSubOp>(user);
+    auto index = subOp.getIndex();
+    auto element = instance.getElement(index);
+    if (element.direction == Direction::Out)
       continue;
-    auto result = dyn_cast<FIRRTLPropertyValue>(instance.getResult(i));
+
+    auto result = dyn_cast<FIRRTLPropertyValue>(subOp.getResult());
     if (!result)
       continue;
 
     // Get the assignment to the input property.
-    PropAssignOp propassign = getPropertyAssignment(result);
+    PropAssignOp propAssign = getPropertyAssignment(result);
+    if (!propAssign)
+      continue;
+
+    assert(actualParams[paramIndexTable[index]] == nullptr &&
+           "parameter already assigned through aliasing InstanceSubOp");
 
     // The source value will be mapped into the actual parameter.
-    Value inputValue = propassign.getSrc();
+    Value inputValue = propAssign.getSrc();
 
     // Convert the inputValue, if necessary.
     convertValue(inputValue, builder, mapping, opsToErase);
 
     // Lookup the mapping for the input value, and use this as an actual
     // parameter.
-    actualParams.push_back(mapping.lookup(inputValue));
+    actualParams[paramIndexTable[index]] = mapping.lookup(inputValue);
 
     // Eagerly erase the property assign, since it is done now.
-    propassign.erase();
+    propAssign.erase();
+    subOp.erase();
   }
 
   // Get the Object type.

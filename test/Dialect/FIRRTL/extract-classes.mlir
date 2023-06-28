@@ -4,12 +4,12 @@ firrtl.circuit "Top" {
   // CHECK-LABEL: firrtl.module @Top
   firrtl.module @Top() {
     // CHECK-NOT: firrtl.instance all
-    %all_in0, %all_out0 = firrtl.instance all @AllProperties(
+    %all = firrtl.instance @AllProperties(
       in in0: !firrtl.string,
       out out0: !firrtl.string)
 
-    // CHECK: %some_in1, %some_out3 = firrtl.instance some
-    %some_in0, %some_in1, %some_out0, %some_out1, %some_out2, %some_out3 = firrtl.instance some @SomeProperties(
+    // CHECK: %some = firrtl.instance @SomeProperties(in in1: !firrtl.uint<1>, out out3: !firrtl.uint<1>)
+    %some = firrtl.instance @SomeProperties(
       in in0: !firrtl.string,
       in in1: !firrtl.uint<1>,
       out out0: !firrtl.string,
@@ -17,10 +17,26 @@ firrtl.circuit "Top" {
       out out2: !firrtl.string,
       out out3: !firrtl.uint<1>)
 
-    // CHECK: %no_in0, %no_out0 = firrtl.instance no
-    %no_in0, %no_out0 = firrtl.instance no @NoProperties(
+    // CHECK: %no = firrtl.instance @NoProperties
+    %no = firrtl.instance @NoProperties(
       in in0: !firrtl.uint<1>,
       out out0: !firrtl.uint<1>)
+
+    // CHECK-NOT: %some_in0 = firrtl.instance.sub %some[in0]
+    %some_in0 = firrtl.instance.sub %some[in0] : !firrtl.instance<
+      @SomeProperties(
+        in in0: !firrtl.string,
+        in in1: !firrtl.uint<1>,
+        out out0: !firrtl.string,
+        out out1: !firrtl.string,
+        out out2: !firrtl.string,
+        out out3: !firrtl.uint<1>)>
+
+  // CHECK-NOT: %all_out0 = firrtl.instance.sub %all[out0]
+  %all_out0 = firrtl.instance.sub %all[out0] : !firrtl.instance<
+    @AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
 
     // CHECK-NOT: firrtl.propassign
     firrtl.propassign %some_in0, %all_out0 : !firrtl.string
@@ -68,23 +84,23 @@ firrtl.circuit "Top" {
       out %out2: !firrtl.string,
       out %out3: !firrtl.string,
       out %out4: !firrtl.uint<1>) {
-    // CHECK-NOT: firrtl.instance all0
-    %all0_in0, %all0_out0 = firrtl.instance all0 @AllProperties(
+    // CHECK-NOT: %all0 = firrtl.instance @AllProperties
+    %all0 = firrtl.instance @AllProperties(
       in in0: !firrtl.string,
       out out0: !firrtl.string)
 
-    // CHECK-NOT: firrtl.instance all1
-    %all1_in0, %all1_out0 = firrtl.instance all1 @AllProperties(
+    // CHECK-NOT: %all1 = firrtl.instance @AllProperties
+    %all1 = firrtl.instance @AllProperties(
       in in0: !firrtl.string,
       out out0: !firrtl.string)
 
-    // CHECK-NOT: firrtl.instance all2
-    %all2_in0, %all2_out0 = firrtl.instance all2 @AllProperties(
+    // CHECK-NOT: %all2 = firrtl.instance @allProperties
+    %all2 = firrtl.instance @AllProperties(
       in in0: !firrtl.string,
       out out0: !firrtl.string)
 
-    // CHECK: %some0_in1, %some0_out3 = firrtl.instance some0
-    %some0_in0, %some0_in1, %some0_out0, %some0_out1, %some0_out2, %some0_out3 = firrtl.instance some0 @SomeProperties(
+    // CHECK: %some0 = firrtl.instance @SomeProperties
+    %some0 = firrtl.instance @SomeProperties(
       in in0: !firrtl.string,
       in in1: !firrtl.uint<1>,
       out out0: !firrtl.string,
@@ -92,10 +108,98 @@ firrtl.circuit "Top" {
       out out2: !firrtl.string,
       out out3: !firrtl.uint<1>)
 
-    // CHECK: %no0_in0, %no0_out0 = firrtl.instance no0
-    %no0_in0, %no0_out0 = firrtl.instance no0 @NoProperties(
+    // CHECK: %no0 = firrtl.instance @NoProperties
+    %no0 = firrtl.instance @NoProperties(
       in in0: !firrtl.uint<1>,
       out out0: !firrtl.uint<1>)
+
+    // CHECK-NOT %all0_in0 = firrtl.instance.sub %all0[in0]
+    %all0_in0 = firrtl.instance.sub %all0[in0] :
+      !firrtl.instance<@AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
+
+    // CHECK-NOT %all0_out0 = firrtl.instance.sub %all0[out0]
+    %all0_out0 = firrtl.instance.sub %all0[out0] :
+      !firrtl.instance<@AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
+
+    // CHECK-NOT %all1_in0 = firrtl.instance.sub %all1[in0]
+    %all1_in0 = firrtl.instance.sub %all1[in0] :
+      !firrtl.instance<@AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
+
+    // CHECK-NOT %all1_out0 = firrtl.instance.sub %all1[out0]
+    %all1_out0 = firrtl.instance.sub %all1[out0] :
+      !firrtl.instance<@AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
+
+    // CHECK-NOT %all2_in0 = firrtl.instance.sub %all2[in0]
+    %all2_in0 = firrtl.instance.sub %all2[in0] :
+      !firrtl.instance<@AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
+
+    // CHECK-NOT %all2_out0 = firrtl.instance.sub %all2[out0]
+    %all2_out0 = firrtl.instance.sub %all2[out0] :
+      !firrtl.instance<@AllProperties(
+        in in0: !firrtl.string,
+        out out0: !firrtl.string)>
+  
+    // CHECK-NOT %some0_in0 = firrtl.instance.sub %some0[in0]
+    %some0_in0 = firrtl.instance.sub %some0[in0] :
+      !firrtl.instance<@SomeProperties(
+        in in0: !firrtl.string,
+        in in1: !firrtl.uint<1>,
+        out out0: !firrtl.string,
+        out out1: !firrtl.string,
+        out out2: !firrtl.string,
+        out out3: !firrtl.uint<1>)>
+
+    // CHECK-NOT %some0_in1 = firrtl.instance.sub %some0[in1]
+    %some0_in1 = firrtl.instance.sub %some0[in1] :
+      !firrtl.instance<@SomeProperties(
+        in in0: !firrtl.string,
+        in in1: !firrtl.uint<1>,
+        out out0: !firrtl.string,
+        out out1: !firrtl.string,
+        out out2: !firrtl.string,
+        out out3: !firrtl.uint<1>)>
+
+    // CHECK-NOT %some0_out0 = firrtl.instance.sub %some0[out0]
+    %some0_out0 = firrtl.instance.sub %some0[out0] :
+      !firrtl.instance<@SomeProperties(
+        in in0: !firrtl.string,
+        in in1: !firrtl.uint<1>,
+        out out0: !firrtl.string,
+        out out1: !firrtl.string,
+        out out2: !firrtl.string,
+        out out3: !firrtl.uint<1>)>
+  
+    // CHECK-NOT %some0_out3 = firrtl.instance.sub %some0[out3]
+    %some0_out3 = firrtl.instance.sub %some0[out3] :
+      !firrtl.instance<@SomeProperties(
+        in in0: !firrtl.string,
+        in in1: !firrtl.uint<1>,
+        out out0: !firrtl.string,
+        out out1: !firrtl.string,
+        out out2: !firrtl.string,
+        out out3: !firrtl.uint<1>)>
+
+    // CHECK-NOT %no0_in0 = firrtl.instance.sub %no0[in0]
+    %no0_in0 = firrtl.instance.sub %no0[in0] :
+      !firrtl.instance<@NoProperties(
+        in in0: !firrtl.uint<1>,
+        out out0: !firrtl.uint<1>)>
+
+    // CHECK-NOT %no0_out0 = firrtl.instance.sub %no0[out0]
+    %no0_out0 = firrtl.instance.sub %no0[out0] :
+      !firrtl.instance<@NoProperties(
+        in in0: !firrtl.uint<1>,
+        out out0: !firrtl.uint<1>)>
 
     // CHECK-NOT: firrtl.string
     // CHECK-NOT: firrtl.propassign

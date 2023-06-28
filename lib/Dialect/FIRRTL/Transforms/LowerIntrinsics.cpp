@@ -143,7 +143,7 @@ static ParseResult namedIntParam(StringRef name, FModuleLike mod,
 }
 
 /// Erase the given instance, replacing any uses of it's ports with the values
-/// given in the array.
+/// given in the array. This WILL erase the given instance.
 static void replaceInstance(InstanceOp inst, ArrayRef<Value> values) {
   inst.eachSubOp([&](auto sub) {
     sub.replaceAllUsesWith(values[sub.getIndex()]);
@@ -255,47 +255,61 @@ static bool lowerCirctClockGate(InstanceGraph &ig, FModuleLike mod) {
   return true;
 }
 
-template <bool isMux2>
-static bool lowerCirctMuxCell(InstanceGraph &ig, FModuleLike mod) {
-  StringRef mnemonic = isMux2 ? "circt.mux2cell" : "circt.mux4cell";
-  unsigned portNum = isMux2 ? 4 : 6;
-  if (hasNPorts(mnemonic, mod, portNum) || namedPort(mnemonic, mod, 0, "sel") ||
-      typedPort<UIntType>(mnemonic, mod, 0)) {
+/// Create a mux-cell intrinsic, and replace the given module instance with the
+/// new intrinsic op. Fan-in is used to remap inputs to the module, to inputs
+/// for the intrinsic op, relying on an assumed port ordering.
+template <typename IntrinsicOp>
+static void replaceMuxCell(InstanceOp inst, unsigned fanIn) {
+  // Ports are [predicate, ...inputs, result].
+  auto portCount = 2 + fanIn;
+  // Create a wire for every input port [0, portCount - 1).
+  ImplicitLocOpBuilder builder(inst.getLoc(), inst);
+  SmallVector<Value> values;
+  values.reserve(portCount - 1);
+  for (unsigned i = 0; i < portCount - 1; i++) {
+    auto v = builder.create<WireOp>(inst.getElement(i).type).getResult();
+    values.push_back(v);
+  }
+
+  // Create the intrinsic operand, passing in all input values.
+  auto out = builder.create<IntrinsicOp>(values);
+
+  // Now reuse the values array to replace the old module instance with the
+  // new intrinsics.
+  values.push_back(out);
+  replaceInstance(inst, values);
+}
+
+/// Replace all instances of the given module with new mux intrinsic ops.
+template <typename InstrinsicOp>
+static void replaceMuxCell(InstanceGraph &ig, FModuleLike mod, unsigned fanIn) {
+  for (auto *instanceRecord : ig.lookup(mod)->uses()) {
+    auto instance = cast<InstanceOp>(instanceRecord->getInstance());
+    replaceMuxCell<Mux2CellIntrinsicOp>(instance, fanIn);
+  }
+}
+
+static bool lowerCirctMux2Cell(InstanceGraph &ig, FModuleLike mod) {
+  StringRef mnemonic = "circt.mux2cell";
+  if (hasNPorts(mnemonic, mod, 4) || namedPort(mnemonic, mod, 0, "sel") ||
+      typedPort<UIntType>(mnemonic, mod, 0) ||
+      namedPort(mnemonic, mod, 1, "high") ||
+      namedPort(mnemonic, mod, 2, "low") || namedPort(mnemonic, mod, 3, "out"))
     return false;
-  }
 
-  if (isMux2) {
-    if (namedPort(mnemonic, mod, 1, "high") ||
-        namedPort(mnemonic, mod, 2, "low") ||
-        namedPort(mnemonic, mod, 3, "out"))
-      return false;
-  } else {
-    if (namedPort(mnemonic, mod, 1, "v3") ||
-        namedPort(mnemonic, mod, 2, "v2") ||
-        namedPort(mnemonic, mod, 3, "v1") ||
-        namedPort(mnemonic, mod, 4, "v0") || namedPort(mnemonic, mod, 5, "out"))
-      return false;
-  }
+  replaceMuxCell<Mux2CellIntrinsicOp>(ig, mod, 2);
+  return true;
+}
 
-  for (auto *use : ig.lookup(mod)->uses()) {
-    auto inst = cast<InstanceOp>(use->getInstance().getOperation());
-    ImplicitLocOpBuilder builder(inst.getLoc(), inst);
-    SmallVector<Value> operands;
-    operands.reserve(portNum - 1);
-    for (unsigned i = 0; i < portNum - 1; i++) {
-      auto v = builder.create<WireOp>(inst.getResult(i).getType()).getResult();
-      operands.push_back(v);
-      inst.getResult(i).replaceAllUsesWith(v);
-    }
-    Value out;
-    if (isMux2)
-      out = builder.create<Mux2CellIntrinsicOp>(operands);
-    else
-      out = builder.create<Mux4CellIntrinsicOp>(operands);
-    inst.getResult(portNum - 1).replaceAllUsesWith(out);
-    inst.erase();
-  }
-
+static bool lowerCirctMux4Cell(InstanceGraph &ig, FModuleLike mod) {
+  StringRef mnemonic = "circt.mux4cell";
+  if (hasNPorts(mnemonic, mod, 6) || namedPort(mnemonic, mod, 0, "sel") ||
+      typedPort<UIntType>(mnemonic, mod, 0) ||
+      namedPort(mnemonic, mod, 1, "v3") || namedPort(mnemonic, mod, 2, "v2") ||
+      namedPort(mnemonic, mod, 3, "v1") || namedPort(mnemonic, mod, 4, "v0") ||
+      namedPort(mnemonic, mod, 5, "out"))
+    return false;
+  replaceMuxCell<Mux4CellIntrinsicOp>(ig, mod, 4);
   return true;
 }
 
@@ -574,10 +588,10 @@ std::pair<const char *, std::function<bool(InstanceGraph &, FModuleLike)>>
         {"circt_verif_assume", lowerCirctVerif<VerifAssumeIntrinsicOp>},
         {"circt.verif.cover", lowerCirctVerif<VerifCoverIntrinsicOp>},
         {"circt_verif_cover", lowerCirctVerif<VerifCoverIntrinsicOp>},
-        {"circt.mux2cell", lowerCirctMuxCell<true>},
-        {"circt_mux2cell", lowerCirctMuxCell<true>},
-        {"circt.mux4cell", lowerCirctMuxCell<false>},
-        {"circt_mux4cell", lowerCirctMuxCell<false>}};
+        {"circt.mux2cell", lowerCirctMux2Cell},
+        {"circt_mux2cell", lowerCirctMux2Cell},
+        {"circt.mux4cell", lowerCirctMux4Cell},
+        {"circt_mux4cell", lowerCirctMux4Cell}};
 
 // This is the main entrypoint for the lowering pass.
 void LowerIntrinsicsPass::runOnOperation() {

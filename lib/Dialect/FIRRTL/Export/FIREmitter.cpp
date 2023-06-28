@@ -637,6 +637,7 @@ void Emitter::emitStatement(InstanceOp op) {
     auto index = subOp.getIndex();
     portName.append(legalize(op.getPortName(index)));
     addValueName(op.getResult(), portName);
+    portName.resize(baseLen);
   }
 }
 
