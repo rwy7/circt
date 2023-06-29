@@ -61,6 +61,7 @@ llvm::raw_ostream &printHash(llvm::raw_ostream &stream, std::string data) {
 struct StructuralHasher {
   explicit StructuralHasher(MLIRContext *context) {
     portTypesAttr = StringAttr::get(context, "portTypes");
+    nonessentialAttributes.insert(StringAttr::get(context, "annotations"));
     nonessentialAttributes.insert(StringAttr::get(context, "name"));
     nonessentialAttributes.insert(StringAttr::get(context, "portAnnotations"));
     nonessentialAttributes.insert(StringAttr::get(context, "portNames"));
@@ -203,6 +204,7 @@ struct Equivalence {
       : instanceGraph(instanceGraph) {
     noDedupClass = StringAttr::get(context, noDedupAnnoClass);
     portTypesAttr = StringAttr::get(context, "portTypes");
+    nonessentialAttributes.insert(StringAttr::get(context, "annotations"));
     nonessentialAttributes.insert(StringAttr::get(context, "name"));
     nonessentialAttributes.insert(StringAttr::get(context, "portAnnotations"));
     nonessentialAttributes.insert(StringAttr::get(context, "portNames"));
@@ -749,9 +751,11 @@ private:
     auto *fromNode = instanceGraph[::cast<hw::HWModuleLike>(fromModule)];
     auto *toNode = instanceGraph[toModule];
     auto newInstanceType = InstanceType::get(toModule);
+    auto newModuleName = newInstanceType.getModuleNameAttr();
     for (auto *oldInstRec : llvm::make_early_inc_range(fromNode->uses())) {
       auto inst = ::cast<InstanceOp>(*oldInstRec->getInstance());
       inst.getResult().setType(newInstanceType);
+      inst.setModuleNameAttr(newModuleName);
       oldInstRec->getParent()->addInstance(inst, toNode);
       oldInstRec->erase();
     }
@@ -1201,7 +1205,6 @@ void fixupAllModules(InstanceGraph &instanceGraph) {
     for (auto *instRec : node->uses()) {
       auto inst = cast<InstanceOp>(instRec->getInstance());
       ImplicitLocOpBuilder builder(inst.getLoc(), inst->getContext());
-      builder.setInsertionPointAfter(inst);
       for (auto *user : inst->getUsers()) {
         auto subOp = cast<InstanceSubOp>(user);
         auto index = subOp.getIndex();
@@ -1212,6 +1215,7 @@ void fixupAllModules(InstanceGraph &instanceGraph) {
           continue;
         // If the type changed we transform it back to the old type with an
         // intermediate wire.
+        builder.setInsertionPointAfter(subOp);
         auto wire = builder.create<WireOp>(oldType, inst.getPortName(index))
                         .getResult();
         subOp.replaceAllUsesWith(wire);
