@@ -162,7 +162,7 @@ firrtl.circuit "LocalTrackers" attributes {annotations = [{
     %c = firrtl.wire {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 1}]} : !firrtl.uint<42>
   }
   firrtl.module @LocalTrackers() {
-    firrtl.instance a {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 3}]} @A()
+    %a = firrtl.instance {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 3}]} @A()
     %b = firrtl.wire {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 2}]} : !firrtl.uint<42>
   }
 }
@@ -171,7 +171,7 @@ firrtl.circuit "LocalTrackers" attributes {annotations = [{
 // CHECK-NEXT:      %c = firrtl.wire sym [[SYMC:@[a-zA-Z0-9_]+]] : !firrtl.uint<42>
 // CHECK-NEXT:    }
 // CHECK-NEXT:    firrtl.module @LocalTrackers() {
-// CHECK-NEXT:      firrtl.instance a sym [[SYMA:@[a-zA-Z0-9_]+]] @A()
+// CHECK-NEXT:      %a = firrtl.instance sym [[SYMA:@[a-zA-Z0-9_]+]] @A()
 // CHECK-NEXT:      %b = firrtl.wire sym [[SYMB:@[a-zA-Z0-9_]+]] : !firrtl.uint<42>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
@@ -213,14 +213,14 @@ firrtl.circuit "NonLocalTrackers" attributes {annotations = [{
     %a = firrtl.wire {annotations = [{circt.nonlocal = @nla_0, class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 1}]} : !firrtl.uint<1>
   }
   firrtl.module @B() {
-    firrtl.instance a sym @a @A()
+    %a = firrtl.instance sym @a @A()
   }
   firrtl.module @NonLocalTrackers() {
-    firrtl.instance b sym @b @B()
+    %b = firrtl.instance sym @b @B()
   }
 }
-// CHECK:       firrtl.instance a sym [[SYMA:@[a-zA-Z0-9_]+]]
-// CHECK:       firrtl.instance b sym [[SYMB:@[a-zA-Z0-9_]+]]
+// CHECK:       %a = firrtl.instance sym [[SYMA:@[a-zA-Z0-9_]+]]
+// CHECK:       %b = firrtl.instance sym [[SYMB:@[a-zA-Z0-9_]+]]
 // CHECK:       sv.verbatim
 // CHECK-SAME:           \22name\22: \22OMReferenceTarget1\22
 // CHECK-SAME{LITERAL}:  \22value\22: \22OMReferenceTarget:~NonLocalTrackers|{{0}}/{{1}}:{{2}}/{{3}}:{{4}}\22
@@ -349,7 +349,11 @@ firrtl.circuit "Top"  attributes {annotations = [{
 }]} {
   hw.hierpath private @nla [@Top::@a, @A]
   firrtl.module @Top(in %in0_0: !firrtl.uint<4>, in %in0_1: !firrtl.uint<4>, in %in1_f0: !firrtl.uint<4>, in %in1_f1: !firrtl.uint<4>, out %out0_0: !firrtl.uint<4>, out %out0_1: !firrtl.uint<4>, out %out1_f0: !firrtl.uint<4>, out %out1_f1: !firrtl.uint<4>) {
-    %a_in0, %a_in1, %a_out0, %a_out1 = firrtl.instance a sym @a  @A(in in0: !firrtl.bundle<io: vector<uint<4>, 2>>, in in1: !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>, out out0: !firrtl.vector<uint<4>, 2>, out out1: !firrtl.bundle<f0: uint<4>, f1: uint<4>>)
+    %a = firrtl.instance sym @a @A(in in0: !firrtl.bundle<io: vector<uint<4>, 2>>, in in1: !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>, out out0: !firrtl.vector<uint<4>, 2>, out out1: !firrtl.bundle<f0: uint<4>, f1: uint<4>>)
+    %a_in0 = firrtl.instance.sub %a[in0] : !firrtl.instance<@A(in in0: !firrtl.bundle<io: vector<uint<4>, 2>>, in in1: !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>, out out0: !firrtl.vector<uint<4>, 2>, out out1: !firrtl.bundle<f0: uint<4>, f1: uint<4>>)>
+    %a_in1 = firrtl.instance.sub %a[in1] : !firrtl.instance<@A(in in0: !firrtl.bundle<io: vector<uint<4>, 2>>, in in1: !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>, out out0: !firrtl.vector<uint<4>, 2>, out out1: !firrtl.bundle<f0: uint<4>, f1: uint<4>>)>
+    %a_out0 = firrtl.instance.sub %a[out0] : !firrtl.instance<@A(in in0: !firrtl.bundle<io: vector<uint<4>, 2>>, in in1: !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>, out out0: !firrtl.vector<uint<4>, 2>, out out1: !firrtl.bundle<f0: uint<4>, f1: uint<4>>)>
+    %a_out1 = firrtl.instance.sub %a[out1] : !firrtl.instance<@A(in in0: !firrtl.bundle<io: vector<uint<4>, 2>>, in in1: !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>, out out0: !firrtl.vector<uint<4>, 2>, out out1: !firrtl.bundle<f0: uint<4>, f1: uint<4>>)>
     %0 = firrtl.subfield %a_in1[io] : !firrtl.bundle<io: bundle<f0: uint<4>, f1: uint<4>>>
     %1 = firrtl.subfield %a_in0[io]: !firrtl.bundle<io: vector<uint<4>, 2>>
     %2 = firrtl.subindex %a_out0[0] : !firrtl.vector<uint<4>, 2>
@@ -488,24 +492,24 @@ firrtl.circuit "SRAMPaths" attributes {annotations = [{
 }]} {
   firrtl.extmodule private @MySRAM()
   firrtl.module private @Submodule() {
-    firrtl.instance mem1 {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 0}]} @MySRAM()
+    %mem1 = firrtl.instance {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 0}]} @MySRAM()
     %mem2_port = firrtl.mem Undefined {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 1}], depth = 8, name = "mem2", portNames = ["port"], readLatency = 0 : i32, writeLatency = 1 : i32 } : !firrtl.bundle<addr: uint<3>, en: uint<1>, clk: clock, data flip: uint<42>>
   }
   firrtl.module @SRAMPaths() {
-    firrtl.instance sub @Submodule()
+    %sub = firrtl.instance @Submodule()
   }
 }
 // CHECK-LABEL: firrtl.circuit "SRAMPaths" {
 // CHECK:         firrtl.extmodule private @MySRAM()
 // CHECK-NEXT:    firrtl.module private @Submodule() {
-// CHECK-NEXT:      firrtl.instance mem1 sym [[SYMMEM1:@[a-zA-Z0-9_]+]]
+// CHECK-NEXT:      %mem1 = firrtl.instance sym [[SYMMEM1:@[a-zA-Z0-9_]+]]
 // CHECK-SAME:        @MySRAM()
 // CHECK-NEXT:      firrtl.mem sym [[SYMMEM2:@[a-zA-Z0-9_]+]]
 // CHECK-SAME:        name = "mem2"
 // CHECK-SAME:        : !firrtl.bundle
 // CHECK-NEXT:    }
 // CHECK-NEXT:    firrtl.module @SRAMPaths() {
-// CHECK-NEXT:      firrtl.instance sub sym [[SYMSUB:@[a-zA-Z0-9_]+]]
+// CHECK-NEXT:      %sub = firrtl.instance sym [[SYMSUB:@[a-zA-Z0-9_]+]]
 // CHECK-NOT:         circt.nonlocal
 // CHECK-SAME:        @Submodule()
 // CHECK-NEXT:    }
@@ -593,8 +597,8 @@ firrtl.circuit "SRAMPathsWithNLA" attributes {annotations = [{
     } : !firrtl.bundle<addr: uint<3>, en: uint<1>, clk: clock, data flip: uint<42>>
   }
   firrtl.module @SRAMPathsWithNLA() {
-    firrtl.instance sub sym @s1 @Submodule()
-    firrtl.instance sub1 sym @s2 @Submodule()
+    %sub = firrtl.instance sym @s1 @Submodule()
+    %sub1 = firrtl.instance sym @s2 @Submodule()
   }
 }
 
@@ -649,13 +653,13 @@ firrtl.circuit "SRAMPathsWithNLA" attributes {annotations = [{
   hw.hierpath private @nla [@SRAMPaths::@sub, @Submodule]
   firrtl.extmodule private @MySRAM()
   firrtl.module private @Submodule() {
-    firrtl.instance mem1 {annotations = [{circt.nonlocal = @nla, class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 0}]} @MySRAM()
+    %mem1 = firrtl.instance {annotations = [{circt.nonlocal = @nla, class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 0}]} @MySRAM()
   }
   firrtl.module private @SRAMPaths() {
-    firrtl.instance sub sym @sub @Submodule()
+    %sub = firrtl.instance sym @sub @Submodule()
   }
   firrtl.module @SRAMPathsWithNLA() {
-    firrtl.instance paths @SRAMPaths()
+    %paths = firrtl.instance @SRAMPaths()
   }
 }
 
@@ -689,12 +693,12 @@ firrtl.circuit "SRAMPathsTopLevel" attributes {annotations = [{
 }]} {
   firrtl.extmodule @MySRAM()
   firrtl.module @SRAMPathsTopLevel() {
-    firrtl.instance mem1 {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 0}]} @MySRAM()
+    %mem1 = firrtl.instance {annotations = [{class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 0}]} @MySRAM()
   }
 }
 
 // CHECK-LABEL: firrtl.circuit "SRAMPathsTopLevel"
-// CHECK:       firrtl.instance mem1 sym [[SYMMEM1:@[a-zA-Z0-9_]+]]
+// CHECK:       %mem1 = firrtl.instance sym [[SYMMEM1:@[a-zA-Z0-9_]+]]
 
 // CHECK:       sv.verbatim
 // CHECK-SAME{LITERAL}:    \22value\22: \22OMMemberInstanceTarget:~SRAMPathsTopLevel|{{0}}/{{1}}:{{2}}\22
@@ -823,7 +827,9 @@ firrtl.circuit "AddPortsRelative" attributes {annotations = [{
   firrtl.module @AddPortsRelative () {
     %in = firrtl.wire : !firrtl.uint<1>
     %out = firrtl.wire : !firrtl.uint<1>
-    %instance_x, %instance_y = firrtl.instance dut @DUT(in x: !firrtl.uint<1>, out y: !firrtl.uint<1>)
+    %dut = firrtl.instance @DUT(in x: !firrtl.uint<1>, out y: !firrtl.uint<1>)
+    %instance_x = firrtl.instance.sub %dut[x] : !firrtl.instance< @DUT(in x: !firrtl.uint<1>, out y: !firrtl.uint<1>)>
+    %instance_y = firrtl.instance.sub %dut[y] : !firrtl.instance< @DUT(in x: !firrtl.uint<1>, out y: !firrtl.uint<1>)>
     firrtl.connect %instance_x, %in : !firrtl.uint<1>, !firrtl.uint<1>
     firrtl.connect %out, %instance_y : !firrtl.uint<1>, !firrtl.uint<1>
   }
@@ -986,20 +992,21 @@ firrtl.circuit "FixPath"  attributes {annotations = [
        {class = "sifive.enterprise.firrtl.MarkDUTAnnotation"}
      ]}
   {
-    firrtl.instance cd sym @cd @D()
+    %cd = firrtl.instance sym @cd @D()
   }
   firrtl.module @D() attributes {annotations = [
     {circt.nonlocal = @nla_3, class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 2 : i64},
     {class = "freechips.rocketchip.objectmodel.OMIRTracker", id = 3 : i64}
   ]} {}
   firrtl.module @FixPath(in %a: !firrtl.uint<1>) {
-    %c_in = firrtl.instance c sym @c @C(in in: !firrtl.uint<1>)
+    %c = firrtl.instance sym @c @C(in in: !firrtl.uint<1>)
+    %c_in = firrtl.instance.sub %c[in] : !firrtl.instance<@C(in in: !firrtl.uint<1>)>
     firrtl.connect %c_in, %a : !firrtl.uint<1>, !firrtl.uint<1>
-    firrtl.instance d  @D()
+    %d = firrtl.instance @D()
   }
   // CHECK-LABEL: firrtl.circuit "FixPath"
   // CHECK:         firrtl.module @FixPath
-  // CHECK:           firrtl.instance d  @D()
+  // CHECK:           %d = firrtl.instance @D()
   // CHECK:         sv.verbatim
   // CHECK-SAME:               name\22: \22dutInstance\22,\0A
   // CHECK-SAME{LITERAL}:      OMMemberInstanceTarget:~FixPath|{{0}}/{{1}}:{{2}}
