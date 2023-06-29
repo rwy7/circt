@@ -481,8 +481,9 @@ circuit MyModule :     ; CHECK: firrtl.circuit "MyModule" {
   ; CHECK-LABEL: firrtl.module private @expr_stmt_ambiguity2(
   module expr_stmt_ambiguity2 :
     ; CHECK: %write = firrtl.instance interesting_name @circuit
+    ; CHECK: [[WRITE_IN:%.+]] = firrtl.instance.sub %write[in]
     inst write of circuit
-    ; CHECK: firrtl.strictconnect %write_in
+    ; CHECK: firrtl.strictconnect [[WRITE_IN]]
     write.in <= UInt(1)
 
   ; CHECK-LABEL: firrtl.module private @oversize_shift(
@@ -805,14 +806,14 @@ circuit MyModule :     ; CHECK: firrtl.circuit "MyModule" {
 
     ; https://github.com/llvm/circt/issues/563
     ; CHECK: %U0 = firrtl.instance interesting_name @mod_0_563
-    ; CHECK: [[U0_IN1:%.+]] = firrtl.instance.sub %U0[in1]
     ; CHECK: [[U0_IN0:%.+]] = firrtl.instance.sub %U0[in0]
-    inst U0 of mod_0_563
-
     ; CHECK: [[INV:%.+]] = firrtl.invalidvalue
     ; CHECK: firrtl.strictconnect [[U0_IN0]], [[INV]]
+    ; CHECK: [[U0_IN1:%.+]] = firrtl.instance.sub %U0[in1]
     ; CHECK: [[INV:%.+]] = firrtl.invalidvalue : !firrtl.bundle<a: uint<5>>
     ; CHECK: firrtl.strictconnect [[U0_IN1]], [[INV]]
+    inst U0 of mod_0_563
+
     U0 is invalid
 
   ; This reference is declared after its first use.
@@ -1148,8 +1149,9 @@ circuit MyModule :     ; CHECK: firrtl.circuit "MyModule" {
     input in: UInt
 
   module ModuleAsIdentifier:
+    ; CHECK: %module = firrtl.instance interesting_name @SomeModule
     inst module of SomeModule
-    ; CHECK: firrtl.instance module interesting_name @SomeModule
+
     module.in <= UInt(1)
 
   ; CHECK-LABEL: firrtl.module private @EnumTypes
@@ -1225,9 +1227,13 @@ circuit EnumTypes:
     ; CHECK-SAME: out %agg_out: !firrtl.probe<bundle<a: uint<1>, b: const.uint>>
     output agg_out : Probe<{a: UInt<1>, b: const UInt}>
 
-    ; CHECK-NEXT: %rc = firrtl.instance @RefsChild
+    ; CHECK-NEXT: %rc = firrtl.instance interesting_name @RefsChild(in in: !firrtl.uint<1>, out r: !firrtl.probe<uint<1>>, out rw: !firrtl.rwprobe<uint<1>>)
     inst rc of RefsChild
-    ; CHECK-NEXT firrtl.instance.sub %rc[in]
+    ; CHECK-NEXT: %[[RC_R:.+]] = firrtl.instance.sub %rc[r] : !firrtl.instance<@RefsChild(in in : !firrtl.uint<1>, out r : !firrtl.probe<uint<1>>, out rw : !firrtl.rwprobe<uint<1>>)>
+    ; CHECK-NEXT: %[[RC_RW:.+]] = firrtl.instance.sub %rc[rw] : !firrtl.instance<@RefsChild(in in : !firrtl.uint<1>, out r : !firrtl.probe<uint<1>>, out rw : !firrtl.rwprobe<uint<1>>)>
+    ; CHECK-NEXT: %[[RC_IN:.+]] = firrtl.instance.sub %rc[in] : !firrtl.instance<@RefsChild(in in : !firrtl.uint<1>, out r : !firrtl.probe<uint<1>>, out rw : !firrtl.rwprobe<uint<1>>)>
+    ; CHECK-NEXT: %[[IN:.+]] = firrtl.constCast %in : (!firrtl.const.uint<1>) -> !firrtl.uint<1>
+    ; CHECK-NEXT: firrtl.strictconnect %[[RC_IN]], %[[IN]]
     rc.in <= in
     ; CHECK-NEXT: %[[OUTREF:.+]] = firrtl.ref.send %outconst
     ; CHECK-NEXT: %[[OUTREF_CAST:.+]] = firrtl.ref.cast %[[OUTREF]] : (!firrtl.probe<const.uint<1>>) -> !firrtl.probe<const.uint>
@@ -1274,8 +1280,8 @@ circuit EnumTypes:
     ; CHECK-NEXT: ref.define %agg_out, %[[AGG3_PROBE_CAST]]
     define agg_out = probe(agg3)
 
-    ; CHECK: %rem = firrtl.instance @RefExtMore
-    ; CHECK-NEXT [[REM_R2:.+]] = firrtl.instance.sub %rem[r2]
+    ; CHECK: %rem = firrtl.instance interesting_name @RefExtMore
+    ; CHECK-NEXT: %[[REM_R2:.+]] = firrtl.instance.sub %rem[r2]
     ; CHECK-NEXT: %[[REM_R2_1:.+]] = firrtl.ref.sub %[[REM_R2]][1]
     ; CHECK-NEXT: %[[REM_R2_1_A:.+]] = firrtl.ref.sub %[[REM_R2_1]][0]
     ; CHECK-NEXT: %[[READ_REM_R2_1_A:.+]] = firrtl.ref.resolve %[[REM_R2_1_A]]
@@ -1294,9 +1300,10 @@ circuit EnumTypes:
     input clock : Clock
     input cond : UInt<1>
 
-    ; CHECK-NEXT: %rc = firrtl.instance @RefsChild
+    ; CHECK-NEXT: %rc = firrtl.instance interesting_name @RefsChild
+    ; CHECK-NEXT: %[[RC_RW:.+]] = firrtl.instance.sub %rc[rw]
+    ; CHECK-NEXT: %[[RC_IN:.+]] = firrtl.instance.sub %rc[in]
     inst rc of RefsChild
-
     rc.in <= in
     ; Check (const) literal works, even if uninferred width.
     ; Cast reference to more general form as needed.
@@ -1310,7 +1317,9 @@ circuit EnumTypes:
     ; CHECK: firrtl.ref.release %clock, %[[NOT_COND]], %[[RC_RW]] : !firrtl.clock, !firrtl.uint<1>, !firrtl.rwprobe<uint<1>>
     release(clock, not(cond), rc.rw)
 
-    ; CHECK-NEXT: %{{.+}}, %{{.+}}, %[[RC2_RW:.+]] = firrtl.instance rc2
+    ; CHECK-NEXT: %rc2 = firrtl.instance interesting_name @RefsChild
+    ; CHECK-NEXT: %[[RC2_RW:.+]] = firrtl.instance.sub %rc2[rw]
+    ; CHECK-NEXT: %[[RC2_IN:.+]] = firrtl.instance.sub %rc2[in]
     inst rc2 of RefsChild
     rc2.in <= in
     ; CHECK: firrtl.ref.release_initial %[[TRUE]], %[[RC2_RW]] : !firrtl.uint<1>, !firrtl.rwprobe<uint<1>>
