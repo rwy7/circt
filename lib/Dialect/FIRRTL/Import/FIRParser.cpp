@@ -1563,6 +1563,19 @@ private:
 /// Attach invalid values to every element of the value.
 // NOLINTNEXTLINE(misc-no-recursion)
 void FIRStmtParser::emitInvalidate(Value val, Flow flow) {
+  // If an entire instance is invalid, invalidate each port and leave.
+  if (auto instanceOp = dyn_cast_or_null<InstanceOp>(val.getDefiningOp())) {
+    assert(flow == Flow::Source);
+    for (unsigned i = 0, e = instanceOp.getNumElements(); i < e; ++i) {
+      auto element = instanceOp.getElement(i);
+      if (element.direction != Direction::In)
+        continue;
+      auto subOp = builder.create<InstanceSubOp>(instanceOp, i);
+      emitInvalidate(subOp, Flow::Sink);
+    }
+    return;
+  }
+
   auto tpe = dyn_cast<FIRRTLBaseType>(val.getType());
   // Invalidate does nothing for non-base types.
   // When aggregates-of-refs are supported, instead check 'containsReference'
