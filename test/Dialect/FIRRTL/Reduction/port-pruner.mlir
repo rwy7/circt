@@ -5,10 +5,7 @@
 firrtl.circuit "Foo" {
   // CHECK-LABEL: firrtl.module @Foo
   firrtl.module @Foo(in %x: !firrtl.uint<1>, out %y: !firrtl.uint<3>) {
-    // CHECK-NOT: %bar_a
-    // CHECK-NOT: %bar_c
-    // CHECK-NOT: %bar_e
-    // CHECK: %bar_b, %bar_d = firrtl.instance bar @Bar
+    // CHECK: %bar = firrtl.instance @Bar(in b: !firrtl.uint<1>, out d: !firrtl.uint<1>)
     %bar = firrtl.instance @Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)
     %bar_a = firrtl.instance.sub %bar[a] : !firrtl.instance<@Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)>
     firrtl.connect %bar_a, %x : !firrtl.uint<1>, !firrtl.uint<1>
