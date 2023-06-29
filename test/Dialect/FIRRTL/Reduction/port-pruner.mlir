@@ -9,10 +9,15 @@ firrtl.circuit "Foo" {
     // CHECK-NOT: %bar_c
     // CHECK-NOT: %bar_e
     // CHECK: %bar_b, %bar_d = firrtl.instance bar @Bar
-    %bar_a, %bar_b, %bar_c, %bar_d, %bar_e = firrtl.instance bar @Bar (in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)
+    %bar = firrtl.instance @Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)
+    %bar_a = firrtl.instance.sub %bar[a] : !firrtl.instance<@Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)>
     firrtl.connect %bar_a, %x : !firrtl.uint<1>, !firrtl.uint<1>
+    %bar_b = firrtl.instance.sub %bar[b] : !firrtl.instance<@Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)>
     firrtl.connect %bar_b, %x : !firrtl.uint<1>, !firrtl.uint<1>
+    %bar_c = firrtl.instance.sub %bar[c] : !firrtl.instance<@Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)>
+    %bar_d = firrtl.instance.sub %bar[d] : !firrtl.instance<@Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)>
     %0 = firrtl.add %bar_c, %bar_d : (!firrtl.uint<1>, !firrtl.uint<1>) -> !firrtl.uint<2>
+    %bar_e = firrtl.instance.sub %bar[e] : !firrtl.instance<@Bar(in a: !firrtl.uint<1>, in b: !firrtl.uint<1>, out c: !firrtl.uint<1>, out d: !firrtl.uint<1>, out e: !firrtl.uint<1>)>
     %1 = firrtl.add %0, %bar_e : (!firrtl.uint<2>, !firrtl.uint<1>) -> !firrtl.uint<3>
     firrtl.connect %y, %1 : !firrtl.uint<3>, !firrtl.uint<3>
   }

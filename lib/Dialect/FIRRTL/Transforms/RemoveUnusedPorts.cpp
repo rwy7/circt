@@ -80,9 +80,20 @@ void RemoveUnusedPortsPass::removeUnusedModulePorts(
     if (port.isInput() && !arg.use_empty())
       continue;
 
-    auto portIsUnused = [&](InstanceRecord *a) -> bool {
-      auto port = a->getInstance()->getResult(arg.getArgNumber());
-      return port.getUses().empty();
+    auto portIsUnused = [&](InstanceGraphNode *node) -> bool {
+      // Iterate over all instances of this module.
+      for (auto *record : node->uses()) {
+        // Iterate over all the InstanceSubOps of this instance.
+        for (auto *user : record->getInstance()->getUsers()) {
+          auto op = cast<InstanceSubOp>(user);
+          // Is this the port we are looking for?
+          if (op.getIndex() == index)
+            // Is the port used at all?
+            if (!user->getResult(0).getUses().empty())
+              return false;
+        }
+      }
+      return true;
     };
 
     // Output port.
@@ -91,7 +102,7 @@ void RemoveUnusedPortsPass::removeUnusedModulePorts(
         // Sometimes the connection is already removed possibly by IMCP.
         // In that case, regard the port value as an invalid value.
         outputPortConstants.push_back(std::nullopt);
-      } else if (llvm::all_of(instanceGraphNode->uses(), portIsUnused)) {
+      } else if (portIsUnused(instanceGraphNode)) {
         // Replace the port with a wire if it is unused.
         auto builder = ImplicitLocOpBuilder::atBlockBegin(
             arg.getLoc(), module.getBodyBlock());
@@ -173,12 +184,9 @@ void RemoveUnusedPortsPass::removeUnusedModulePorts(
 
         if (onlyWritten) {
           // connects driving this port can be deleted.
-          for (auto result : results) {
-            for (auto *user : result.getUsers()) {
-              assert(isa<FConnectLike>(user));
-              user->erase();
-            }
-          }
+          for (auto result : results)
+            while (!result.use_empty())
+              result.use_begin()->getOwner()->erase();
         } else {
           for (auto result : results)
             result.replaceAllUsesWith(wire.getResult());

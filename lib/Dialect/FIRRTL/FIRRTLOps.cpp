@@ -1450,7 +1450,7 @@ InstanceOp InstanceOp::erasePorts(OpBuilder &builder,
       getInnerSymAttr());
 
   // Map old InstanceSubOps to new InstanceSubOps using the indexMap.
-  for (auto *user : getResult().getUsers()) {
+  for (auto *user : llvm::make_early_inc_range(getResult().getUsers())) {
     auto subOp = cast<InstanceSubOp>(user);
     auto portIndex = subOp.getIndex();
     if (portIndices.test(portIndex)) {
