@@ -254,10 +254,10 @@ firrtl.circuit "Foo"  attributes {rawAnnotations = [
     %a = firrtl.wire interesting_name  : !firrtl.uint<1>
     %b = firrtl.wire interesting_name  : !firrtl.uint<1>
     %g = firrtl.wire interesting_name  : !firrtl.uint<1>
-    firrtl.instance c interesting_name  @C()
-    firrtl.instance d interesting_name  @D()
-    firrtl.instance e interesting_name  @E()
-    firrtl.instance f interesting_name  @F()
+    %c = firrtl.instance interesting_name  @C()
+    %d = firrtl.instance interesting_name  @D()
+    %e = firrtl.instance interesting_name  @E()
+    %f = firrtl.instance interesting_name  @F()
   }
 }
 
