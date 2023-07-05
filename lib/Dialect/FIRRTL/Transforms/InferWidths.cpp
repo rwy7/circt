@@ -1205,7 +1205,7 @@ public:
   /// Assign the constraint expressions of the fields in the `src` argument as
   /// the expressions for the `dst` argument. Both fields must be of the given
   /// `type`.
-  void unifyTypes(FieldRef lhs, FieldRef rhs, FIRRTLType type);
+  void unifyTypes(FieldRef lhs, FieldRef rhs, Type type);
 
   /// Get the expr associated with the value.  The value must be a non-aggregate
   /// type.
@@ -1409,6 +1409,13 @@ LogicalResult InferenceMapping::mapOperation(Operation *op) {
         // of the vector, which has a field ID of 1.
         unifyTypes(FieldRef(op.getResult(), 0), FieldRef(op.getInput(), 1),
                    op.getType());
+      })
+      .Case<InstanceSubOp>([&](auto op) {
+        auto instanceType = op.getInput().getType();
+        auto fieldID = instanceType.getFieldID(op.getIndex());
+        auto type = op.getResult().getType();
+        unifyTypes(FieldRef(op.getResult(), 0),
+                   FieldRef(op.getInput(), fieldID), type);
       })
       .Case<SubtagOp>([&](auto op) {
         auto enumType = op.getInput().getType();
@@ -1623,9 +1630,10 @@ LogicalResult InferenceMapping::mapOperation(Operation *op) {
         // module's ports, and use them for instance port wires. This way,
         // constraints imposed onto the ports of the instance will transparently
         // apply to the ports of the instantiated module.
-        for (auto it : llvm::zip(op->getResults(), module.getArguments())) {
-          unifyTypes(FieldRef(std::get<0>(it), 0), FieldRef(std::get<1>(it), 0),
-                     std::get<0>(it).getType().template cast<FIRRTLType>());
+        auto instanceType = op.getType();
+        for (auto arg : module.getArguments()) {
+          auto fieldID = instanceType.getFieldID(arg.getArgNumber());
+          unifyTypes(FieldRef(op, fieldID), FieldRef(arg, 0), arg.getType());
         }
       })
 
@@ -1910,7 +1918,7 @@ void InferenceMapping::constrainTypes(Expr *larger, Expr *smaller,
 
 /// Assign the constraint expressions of the fields in the `src` argument as the
 /// expressions for the `dst` argument. Both fields must be of the given `type`.
-void InferenceMapping::unifyTypes(FieldRef lhs, FieldRef rhs, FIRRTLType type) {
+void InferenceMapping::unifyTypes(FieldRef lhs, FieldRef rhs, Type type) {
   // Fast path for `unifyTypes(x, x, _)`.
   if (lhs == rhs)
     return;

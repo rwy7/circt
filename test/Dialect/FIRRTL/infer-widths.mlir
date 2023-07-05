@@ -578,7 +578,10 @@ firrtl.circuit "Foo" {
     firrtl.connect %out, %0 : !firrtl.uint, !firrtl.uint
   }
   firrtl.module @InterModuleSimpleBar(in %in: !firrtl.uint<42>, out %out: !firrtl.uint) {
-    %inst_in, %inst_out = firrtl.instance inst @InterModuleSimpleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst = firrtl.instance @InterModuleSimpleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst_in = firrtl.instance.sub %inst[in] : !firrtl.instance<@InterModuleSimpleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
+    %inst_out = firrtl.instance.sub %inst[out] : !firrtl.instance<@InterModuleSimpleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
+
     %0 = firrtl.add %inst_out, %inst_out : (!firrtl.uint, !firrtl.uint) -> !firrtl.uint
     firrtl.connect %inst_in, %in : !firrtl.uint, !firrtl.uint<42>
     firrtl.connect %out, %0 : !firrtl.uint, !firrtl.uint
@@ -597,8 +600,12 @@ firrtl.circuit "Foo" {
     firrtl.connect %out, %0 : !firrtl.uint, !firrtl.uint
   }
   firrtl.module @InterModuleMultipleBar(in %in1: !firrtl.uint<17>, in %in2: !firrtl.uint<42>, out %out: !firrtl.uint) {
-    %inst1_in, %inst1_out = firrtl.instance inst1 @InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
-    %inst2_in, %inst2_out = firrtl.instance inst2 @InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst1 = firrtl.instance @InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst1_in = firrtl.instance.sub %inst1[in] : !firrtl.instance<@InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
+    %inst1_out = firrtl.instance.sub %inst1[out] : !firrtl.instance<@InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
+    %inst2 = firrtl.instance @InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst2_in = firrtl.instance.sub %inst2[in] : !firrtl.instance<@InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
+    %inst2_out = firrtl.instance.sub %inst2[out] : !firrtl.instance<@InterModuleMultipleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
     %0 = firrtl.xor %inst1_out, %inst2_out : (!firrtl.uint, !firrtl.uint) -> !firrtl.uint
     firrtl.connect %inst1_in, %in1 : !firrtl.uint, !firrtl.uint<17>
     firrtl.connect %inst2_in, %in2 : !firrtl.uint, !firrtl.uint<42>
@@ -818,7 +825,9 @@ firrtl.circuit "Foo" {
   // CHECK-LABEL: @InterModuleGoodCycleBar
   // CHECK-SAME: out %out: !firrtl.uint<39>
   firrtl.module @InterModuleGoodCycleBar(in %in: !firrtl.uint<42>, out %out: !firrtl.uint) {
-    %inst_in, %inst_out = firrtl.instance inst  @InterModuleGoodCycleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst = firrtl.instance @InterModuleGoodCycleFoo(in in: !firrtl.uint, out out: !firrtl.uint)
+    %inst_in = firrtl.instance.sub %inst[in] : !firrtl.instance<@InterModuleGoodCycleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
+    %inst_out = firrtl.instance.sub %inst[out] : !firrtl.instance<@InterModuleGoodCycleFoo(in in: !firrtl.uint, out out: !firrtl.uint)>
     firrtl.connect %inst_in, %in : !firrtl.uint, !firrtl.uint<42>
     firrtl.connect %inst_in, %inst_out : !firrtl.uint, !firrtl.uint
     firrtl.connect %out, %inst_out : !firrtl.uint, !firrtl.uint
@@ -876,7 +885,11 @@ firrtl.circuit "Foo" {
   // CHECK: firrtl.ref.resolve %sub_x : !firrtl.probe<uint<2>>
   // CHECK: firrtl.ref.resolve %sub_y : !firrtl.rwprobe<uint<2>>
   firrtl.module @Ref(out %r : !firrtl.uint, out %s : !firrtl.uint) {
-    %sub_x, %sub_y, %sub_bov_ref = firrtl.instance sub @SubRef(out x: !firrtl.probe<uint>, out y: !firrtl.rwprobe<uint>, out bov_ref : !firrtl.rwprobe<bundle<a: vector<uint, 2>, b : uint>>)
+    %sub = firrtl.instance @SubRef(out x: !firrtl.probe<uint>, out y: !firrtl.rwprobe<uint>, out bov_ref : !firrtl.rwprobe<bundle<a: vector<uint, 2>, b : uint>>)
+    %sub_x = firrtl.instance.sub %sub[x] : !firrtl.instance<@SubRef(out x: !firrtl.probe<uint>, out y: !firrtl.rwprobe<uint>, out bov_ref : !firrtl.rwprobe<bundle<a: vector<uint, 2>, b : uint>>)>
+    %sub_y = firrtl.instance.sub %sub[y] : !firrtl.instance<@SubRef(out x: !firrtl.probe<uint>, out y: !firrtl.rwprobe<uint>, out bov_ref : !firrtl.rwprobe<bundle<a: vector<uint, 2>, b : uint>>)>
+    %sub_bov_ref = firrtl.instance.sub %sub[bov_ref] : !firrtl.instance<@SubRef(out x: !firrtl.probe<uint>, out y: !firrtl.rwprobe<uint>, out bov_ref : !firrtl.rwprobe<bundle<a: vector<uint, 2>, b : uint>>)>
+
     %res_x = firrtl.ref.resolve %sub_x : !firrtl.probe<uint>
     %res_y = firrtl.ref.resolve %sub_y : !firrtl.rwprobe<uint>
     firrtl.connect %r, %res_x : !firrtl.uint, !firrtl.uint
