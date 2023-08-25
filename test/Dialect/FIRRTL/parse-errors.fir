@@ -815,6 +815,7 @@ circuit GroupAndCircuitShareName:
 
 
 ;// -----
+FIRRTL version 3.2.0
 
 FIRRTL version 3.2.0
 circuit Top:
@@ -822,6 +823,7 @@ circuit Top:
   class Top:
 
 ;// -----
+FIRRTL version 3.2.0
 
 FIRRTL version 3.2.0
 circuit Top:
@@ -897,25 +899,12 @@ circuit Top:
 FIRRTL version 3.0.0
 
 circuit Top:
+  ; expected-error @below {{classes are a FIRRTL 3.2.0+ feature, but the specified FIRRTL version was 3.0.0}}
   class MyClass:
     skip
 
   module Top:
-    ; expected-error @below {{object statements are a FIRRTL 3.2.0+ feature, but the specified FIRRTL version was 3.0.0}}
     object x of MyClass
-
-;// -----
-FIRRTL version 3.0.0
-
-circuit Top:
-  class MyClass:
-    skip
-
-  module Top:
-    ; expected-error @below {{Inst types are a FIRRTL 3.2.0+ feature, but the specified FIRRTL version was 3.0.0}}
-    output o: Inst<MyClass>
-    object x of MyClass
-    propassign o, x
 
 ;// -----
 ; Lists not yet supported.
