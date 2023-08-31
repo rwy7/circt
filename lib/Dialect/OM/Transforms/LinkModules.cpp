@@ -57,8 +57,6 @@ LogicalResult ModuleInfo::initialize() {
   for (auto &op : module.getOps()) {
     if (auto classLike = dyn_cast<ClassLike>(op))
       symbolToClasses.insert({classLike.getSymNameAttr(), classLike});
-    else
-      return op.emitError() << "unhandled top-level operation";
   }
   return success();
 }
