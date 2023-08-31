@@ -3668,7 +3668,7 @@ ParseResult FIRStmtParser::parseObject() {
   if (!referencedClass)
     return emitError(startTok.getLoc(), "use of undefined class name '" +
                                             className + "' in object");
-  auto result = builder.create<ObjectOp>(referencedClass);
+  auto result = builder.create<ObjectOp>(referencedClass, id);
   return moduleContext.addSymbolEntry(id, result, startTok.getLoc());
 }
 
