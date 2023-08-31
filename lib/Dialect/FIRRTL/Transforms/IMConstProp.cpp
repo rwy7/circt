@@ -659,6 +659,12 @@ void IMConstPropPass::visitConnectLike(FConnectLike connect,
     return markOverdefined(connect.getDest());
   }
 
+  // Mark property types as overdefined
+  if (isa<PropertyType>(destTypeFIRRTL)) {
+    markOverdefined(connect.getSrc());
+    return markOverdefined(connect.getDest());
+  }
+
   auto fieldRefSrc = getOrCacheFieldRefFromValue(connect.getSrc());
   auto fieldRefDest = getOrCacheFieldRefFromValue(connect.getDest());
   if (auto subaccess = fieldRefDest.getValue().getDefiningOp<SubaccessOp>()) {
