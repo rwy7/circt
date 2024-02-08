@@ -6,6 +6,8 @@ firrtl.circuit "Simple" {
       firrtl.layer @C bind {}
     }
   }
+  firrtl.layer @B bind {}
+
   firrtl.module @Simple() {
     %a = firrtl.wire : !firrtl.uint<1>
     %b = firrtl.wire : !firrtl.uint<2>
@@ -21,7 +23,6 @@ firrtl.circuit "Simple" {
       }
     }
   }
-}
 
 // CHECK-LABEL: firrtl.circuit "Simple"
 //
@@ -116,3 +117,44 @@ firrtl.circuit "ModuleNameConflict" {
 // CHECK:         firrtl.instance foo @ModuleNameConflict_A()
 // CHECK-NEXT:    firrtl.instance {{[_a-zA-Z0-9]+}} {lowerToBind,
 // CHECK-SAME:      @[[groupModule]](
+
+// -----
+firrtl.circuit "Test" {
+  firrtl.module @Test() {}
+
+  firrtl.layer @A bind {
+    firrtl.layer @B bind {
+      firrtl.layer @C bind {}
+    }
+  }
+  firrtl.layer @B bind {}
+
+  //===--------------------------------------------------------------------===//
+  // Removal of Probe Colors
+  //===--------------------------------------------------------------------===//
+
+  // CHECK-LABEL: @ColoredPorts(out %o : !firrtl.probe<uint<1>>, in %i : !firrtl.probe<uint<1>>)
+  firrtl.module @ColoredPorts(out %o : !firrtl.probe<uint<1>, @A>, in %i : !firrtl.probe<uint<1>, @A>) {}
+
+  // CHECK-LABEL: @ExtColoredPorts(out o : !firrtl.probe<uint<1>>, in i : !firrtl.probe<uint<1>>)
+  firrtl.extmodule @ExtColoredPorts(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>) {}
+
+  // CHECK-LABEL: @ColoredPortsOnInstances
+  firrtl.module @ColoredPortsOnInstances(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>) {
+     // CHECK: %foo_o, %foo_i = firrtl.instance @ColoredPorts()
+   %foo_o, %foo_i = firrtl.instance foo {layers = [@A]} @ColoredPorts(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>)
+  }
+
+  // CHECK-LABEL: @EnabledLayers() {}
+  firrtl.module   @EnabledLayers() attributes {layers = [@A]} {}
+
+  // CHECK-LABEL: @EnabledLayersOnInstance()
+  firrtl.module @EnabledLayersOnInstance() {
+    // CHECK: firrtl.instance enabledLayers @EnabledLayers()
+    firrtl.instance enabledLayers {layers = [@A]} @EnabledLayers()
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Removal of Enabled Layers
+  //===--------------------------------------------------------------------===//
+}

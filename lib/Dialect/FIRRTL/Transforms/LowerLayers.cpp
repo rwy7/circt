@@ -127,17 +127,17 @@ bool LowerLayersPass::removeLayersFromPorts(FModuleOp moduleOp) {
 
 void LowerLayersPass::removeLayersFromRefCast(RefCastOp cast) {
   auto result = cast.getResult();
-  auto type = result.getType();
-  if (type.getLayer()) {
+  auto oldType = result.getType();
+  if (oldType.getLayer()) {
     auto input = cast.getInput();
-    auto oldType = input.getType();
-    auto newType = type.removeLayer();
-    if (newType == oldType) {
+    auto srcType = input.getType();
+    auto newType = oldType.removeLayer();
+    if (newType == srcType) {
       result.replaceAllUsesWith(input);
       cast->erase();
-    } else {
-      result.setType(newType);
+      return;
     }
+    result.setType(newType);
   }
 }
 
@@ -150,6 +150,7 @@ bool LowerLayersPass::runOnModule(FModuleOp moduleOp) {
   CircuitOp circuitOp = moduleOp->getParentOfType<CircuitOp>();
   StringRef circuitName = circuitOp.getName();
 
+  moduleOp.setLayers({});
   removeLayersFromPorts(moduleOp);
 
   // A map of instance ops to modules that this pass creates.  This is used to
@@ -179,6 +180,7 @@ bool LowerLayersPass::runOnModule(FModuleOp moduleOp) {
       return WalkResult::advance();
     }
     if (auto instance = dyn_cast<InstanceOp>(op)) {
+      instance.setLayers({});
       for (auto result : instance.getResults())
         removeLayersFromValue(result);
       return WalkResult::advance();
@@ -234,7 +236,7 @@ bool LowerLayersPass::runOnModule(FModuleOp moduleOp) {
         replacement = builder.create<RefSendOp>(loc, replacement);
       }
       operand.replaceUsesWithIf(replacement, [&](OpOperand &operand) {
-        return operand.getOwner()->getBlock() == body;
+        return layerBlock->isAncestor(operand.getOwner());
       });
 
       connectValues.push_back({operand, ConnectKind::NonRef});
@@ -505,38 +507,7 @@ void LowerLayersPass::runOnOperation() {
 
   // Lower the layer blocks of each module.
   SmallVector<FModuleOp> modules(circuitOp.getBodyBlock()->getOps<FModuleOp>());
-  SmallVector<FModuleOp> modifiedModules = transformReduce(
-      circuitOp.getContext(), modules, SmallVector<FModuleOp>{},
-      [](auto acc, auto x) {
-        if (!x.empty())
-          acc.append(x.begin(), x.end());
-        return acc;
-      },
-      [&](FModuleOp moduleOp) -> SmallVector<FModuleOp> {
-        auto modified = runOnModule(moduleOp);
-        if (modified)
-          return {moduleOp};
-        return {};
-      });
-
-  // Iterate over all modified modules and cleanup their instantiation sites.
-  auto *iGraph = &getAnalysis<InstanceGraph>();
-  for (auto &moduleOp : modifiedModules) {
-    auto *moduleNode = iGraph->lookup(moduleOp);
-    for (auto *instNode : llvm::make_early_inc_range(moduleNode->uses())) {
-      auto oldInstOp = dyn_cast<InstanceOp>(instNode->getInstance());
-      if (!oldInstOp)
-        continue;
-      ImplicitLocOpBuilder builder(oldInstOp.getLoc(), oldInstOp);
-      auto newInst = builder.create<InstanceOp>(
-          moduleOp, oldInstOp.getInstanceName(), oldInstOp.getNameKind(),
-          oldInstOp.getAnnotations().getValue(),
-          oldInstOp.getPortAnnotations().getValue(), oldInstOp.getLowerToBind(),
-          oldInstOp.getInnerSymAttr());
-      oldInstOp.replaceAllUsesWith(newInst);
-      oldInstOp.erase();
-    }
-  }
+  parallelForEach(modules, [this](FModuleOp module) { runOnModule(module); });
 
   // Generate the header and footer of each bindings file.  The body will be
   // populated later when binds are exported to Verilog.  This produces text
