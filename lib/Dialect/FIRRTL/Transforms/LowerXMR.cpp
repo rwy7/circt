@@ -349,11 +349,6 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
     circuitNamespace = nullptr;
     pathCache.clear();
     pathInsertPoint = {};
-
-    // All layers definitions can now be deleted.
-    for (auto layerOp : llvm::make_early_inc_range(
-             getOperation().getBodyBlock()->getOps<LayerOp>()))
-      layerOp.erase();
   }
 
   /// Generate the ABI ref_<module> prefix string into `prefix`.
@@ -638,47 +633,6 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
           getRefABIMacroForPort(module, portIndex, circuitRefPrefix);
       builder.create<sv::MacroDeclOp>(macroName, ArrayAttr(), StringAttr());
 
-      ImplicitLocOpBuilder::InsertionGuard guard(builder);
-      if (auto layer = refType.getLayer()) {
-        SmallVector<FlatSymbolRefAttr> refStack;
-        auto layerIt = layer;
-        while (layerIt && ifDefMap.find(layerIt) == ifDefMap.end()) {
-          if (layerIt.getNestedReferences().empty()) {
-            refStack.push_back(
-                FlatSymbolRefAttr::get(layerIt.getRootReference()));
-            layerIt = {};
-            continue;
-          }
-          refStack.push_back(layerIt.getNestedReferences().back());
-          layerIt =
-              SymbolRefAttr::get(layerIt.getRootReference(),
-                                 layerIt.getNestedReferences().drop_back());
-        }
-
-        SmallVector<FlatSymbolRefAttr> nestedRefs;
-        StringAttr root;
-        if (layerIt) {
-          builder.setInsertionPointToEnd(ifDefMap[layerIt].getThenBlock());
-          root = layerIt.getRootReference();
-          nestedRefs.append(layerIt.getNestedReferences().begin(),
-                            layerIt.getNestedReferences().end());
-        }
-        while (!refStack.empty()) {
-          if (!root)
-            root = refStack.pop_back_val().getAttr();
-          else
-            nestedRefs.push_back(refStack.pop_back_val());
-          layerIt = SymbolRefAttr::get(root, nestedRefs);
-          auto ifDefOp =
-              builder.create<sv::IfDefOp>(layerIt.getLeafReference());
-          ifDefOp->setAttr("output_file",
-                           hw::OutputFileAttr::getFromFilename(
-                               &getContext(), circuitRefPrefix + ".sv"));
-          ifDefMap[layerIt] = ifDefOp;
-          builder.setInsertionPointToStart(ifDefOp.getThenBlock());
-        }
-      }
-
       auto macroDefOp = builder.create<sv::MacroDefOp>(
           FlatSymbolRefAttr::get(macroName),
           builder.getStringAttr(formatString),
@@ -884,9 +838,6 @@ private:
 
   /// The insertion point where the pass inserts HierPathOps.
   OpBuilder::InsertPoint pathInsertPoint = {};
-
-  /// A map of layer name to an `ifdef associated with this layer.
-  DenseMap<SymbolRefAttr, sv::IfDefOp> ifDefMap;
 };
 
 std::unique_ptr<mlir::Pass> circt::firrtl::createLowerXMRPass() {
