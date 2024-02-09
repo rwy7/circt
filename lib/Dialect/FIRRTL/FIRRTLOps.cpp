@@ -1985,6 +1985,14 @@ ArrayAttr ClassOp::getLayersAttr() { return ArrayAttr::get(getContext(), {}); }
 
 ArrayRef<Attribute> ClassOp::getLayers() { return getLayersAttr(); }
 
+void ClassOp::setLayersAttr(ArrayAttr layers) {
+  assert(layers.empty() && "classes may not enable layers");
+}
+
+void ClassOp::setLayers(ArrayRef<Attribute> layers) {
+  assert(layers.empty() && "classes may not enable layers");
+}
+
 SmallVector<::circt::hw::PortInfo> ClassOp::getPortList() {
   return ::getPortListImpl(*this);
 }
@@ -2060,6 +2068,14 @@ ArrayAttr ExtClassOp::getLayersAttr() {
 }
 
 ArrayRef<Attribute> ExtClassOp::getLayers() { return getLayersAttr(); }
+
+void ExtClassOp::setLayersAttr(ArrayAttr layers) {
+  assert(layers.empty() && "classes may not enable layers");
+}
+
+void ExtClassOp::setLayers(ArrayRef<Attribute> layers) {
+  assert(layers.empty() && "classes may not enable layers");
+}
 
 ArrayAttr ExtClassOp::getParameters() { return {}; }
 

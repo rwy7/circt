@@ -49,6 +49,12 @@ def FModuleLike : OpInterface<"FModuleLike", [Symbol, PortList, InstanceGraphMod
     InterfaceMethod<"Get the module's enabled layers.",
       "ArrayRef<Attribute>", "getLayers">,
 
+    InterfaceMethod<"Set the module's enabled layers.",
+      "void", "setLayersAttr", (ins "::mlir::ArrayAttr":$layers)>,
+
+    InterfaceMethod<"Set the module's enabled layers",
+      "void", "setLayers", (ins "::llvm::ArrayRef<Attribute>":$layers)>,
+
     //===------------------------------------------------------------------===//
     // Port Directions
     //===------------------------------------------------------------------===//

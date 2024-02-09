@@ -305,7 +305,10 @@ def ClassOp : FIRRTLModuleLike<"class", [
     // Class Ops do not support port annotations or enabled layers.
     // Override these methods to return an empty array attr.
     "getPortAnnotationsAttr",
-    "getLayersAttr"]>,
+    "getLayersAttr",
+    "getLayers",
+    "setLayersAttr",
+    "setLayers"]>,
   DeclareOpInterfaceMethods<ClassLike>,
   DeclareOpInterfaceMethods<Symbol, ["canDiscardOnUseEmpty"]>]> {
   let summary = "FIRRTL Class";
@@ -362,7 +365,10 @@ def ExtClassOp : FIRRTLModuleLike<"extclass", [
     // ExtClassOps do not support port annotations or enabled layers.
     // Override these methods to return an empty array attr.
     "getPortAnnotationsAttr",
-    "getLayersAttr"]>,
+    "getLayersAttr",
+    "getLayers",
+    "setLayersAttr",
+    "setLayers"]>,
   DeclareOpInterfaceMethods<ClassLike>,
   DeclareOpInterfaceMethods<Symbol, ["canDiscardOnUseEmpty"]>]> {
   let summary = "FIRRTL external class";

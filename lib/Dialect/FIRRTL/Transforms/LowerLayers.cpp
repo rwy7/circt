@@ -55,15 +55,15 @@ class LowerLayersPass : public LowerLayersBase<LowerLayersPass> {
 
   /// Extract layerblocks and strip probe colors from all ops under the module.
   /// Returns true if the module ports were modified.
-  bool runOnModule(FModuleOp moduleOp);
+  void runOnModule(FModuleLike moduleOp);
 
   /// Update the module's port types to remove any explicit layer requirements
   /// from any probe types. Returns true if the port types were updated.
-  bool removeLayersFromPorts(FModuleOp moduleOp);
+  void removeLayersFromPorts(FModuleLike moduleOp);
 
   /// Update the value's type to remove any layers from any probe types.
   /// Returns true if the type changed.
-  bool removeLayersFromValue(Value value);
+  void removeLayersFromValue(Value value);
 
   /// Remove any layers from the result of the cast. If the cast becomes a nop,
   /// remove the cast itself from the IR.
@@ -95,22 +95,20 @@ FModuleOp LowerLayersPass::buildNewModule(OpBuilder &builder, Location location,
   return newModule;
 }
 
-bool LowerLayersPass::removeLayersFromValue(Value value) {
+void LowerLayersPass::removeLayersFromValue(Value value) {
   auto type = dyn_cast<RefType>(value.getType());
   if (!type || !type.getLayer())
-    return false;
+    return;
   value.setType(type.removeLayer());
-  return true;
 }
 
-bool LowerLayersPass::removeLayersFromPorts(FModuleOp moduleOp) {
-  bool changed = false;
-  for (auto arg : moduleOp.getBodyBlock()->getArguments())
-    changed |= removeLayersFromValue(arg);
-  if (!changed)
-    return false;
+void LowerLayersPass::removeLayersFromPorts(FModuleLike moduleLike) {
+  if (auto moduleOp = dyn_cast<FModuleOp>(moduleLike.getOperation())) {
+    for (auto arg : moduleOp.getBodyBlock()->getArguments())
+      removeLayersFromValue(arg);
+  }
 
-  auto oldTypeAttrs = moduleOp.getPortTypesAttr();
+  auto oldTypeAttrs = moduleLike.getPortTypesAttr();
   SmallVector<Attribute> newTypeAttrs;
   newTypeAttrs.reserve(oldTypeAttrs.size());
   for (auto typeAttr : oldTypeAttrs.getAsRange<TypeAttr>()) {
@@ -119,10 +117,8 @@ bool LowerLayersPass::removeLayersFromPorts(FModuleOp moduleOp) {
         typeAttr = TypeAttr::get(refType.removeLayer());
     newTypeAttrs.push_back(typeAttr);
   }
-  moduleOp->setAttr(FModuleLike::getPortTypesAttrName(),
-                    ArrayAttr::get(moduleOp.getContext(), newTypeAttrs));
-
-  return true;
+  moduleLike->setAttr(FModuleLike::getPortTypesAttrName(),
+                      ArrayAttr::get(moduleLike.getContext(), newTypeAttrs));
 }
 
 void LowerLayersPass::removeLayersFromRefCast(RefCastOp cast) {
@@ -141,17 +137,23 @@ void LowerLayersPass::removeLayersFromRefCast(RefCastOp cast) {
   }
 }
 
-bool LowerLayersPass::runOnModule(FModuleOp moduleOp) {
+void LowerLayersPass::runOnModule(FModuleLike moduleLike) {
   LLVM_DEBUG({
-    llvm::dbgs() << "Module: " << moduleOp.getModuleName() << "\n";
+    llvm::dbgs() << "Module: " << moduleLike.getModuleName() << "\n";
     llvm::dbgs() << "  Examining Layer Blocks:\n";
   });
 
+  // Strip away layers from the interface of the module-like op.
+  moduleLike.setLayers({});
+  removeLayersFromPorts(moduleLike);
+
+  // If the module-like op is a real module, remove layers from its body.
+  auto moduleOp = dyn_cast<FModuleOp>(moduleLike.getOperation());
+  if (!moduleOp)
+    return;
+
   CircuitOp circuitOp = moduleOp->getParentOfType<CircuitOp>();
   StringRef circuitName = circuitOp.getName();
-
-  moduleOp.setLayers({});
-  removeLayersFromPorts(moduleOp);
 
   // A map of instance ops to modules that this pass creates.  This is used to
   // check if this was an instance that we created and to do fast module
@@ -474,8 +476,6 @@ bool LowerLayersPass::runOnModule(FModuleOp moduleOp) {
 
     return WalkResult::advance();
   });
-
-  return true;
 }
 
 /// Process a circuit to remove all layer blocks in each module and top-level
@@ -506,8 +506,9 @@ void LowerLayersPass::runOnOperation() {
   });
 
   // Lower the layer blocks of each module.
-  SmallVector<FModuleOp> modules(circuitOp.getBodyBlock()->getOps<FModuleOp>());
-  parallelForEach(modules, [this](FModuleOp module) { runOnModule(module); });
+  SmallVector<FModuleLike> modules(
+      circuitOp.getBodyBlock()->getOps<FModuleLike>());
+  parallelForEach(modules, [this](FModuleLike module) { runOnModule(module); });
 
   // Generate the header and footer of each bindings file.  The body will be
   // populated later when binds are exported to Verilog.  This produces text
@@ -568,6 +569,11 @@ void LowerLayersPass::runOnOperation() {
       layers.push_back(
           {layerOp, builder.getStringAttr("`include \"" + prefix + ".sv\"")});
   });
+
+  // All layers definitions can now be deleted.
+  for (auto layerOp : llvm::make_early_inc_range(
+           getOperation().getBodyBlock()->getOps<LayerOp>()))
+    layerOp.erase();
 }
 
 std::unique_ptr<mlir::Pass> circt::firrtl::createLowerLayersPass() {

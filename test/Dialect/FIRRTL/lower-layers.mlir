@@ -6,7 +6,6 @@ firrtl.circuit "Simple" {
       firrtl.layer @C bind {}
     }
   }
-  firrtl.layer @B bind {}
 
   firrtl.module @Simple() {
     %a = firrtl.wire : !firrtl.uint<1>
@@ -23,6 +22,7 @@ firrtl.circuit "Simple" {
       }
     }
   }
+}
 
 // CHECK-LABEL: firrtl.circuit "Simple"
 //
@@ -119,6 +119,7 @@ firrtl.circuit "ModuleNameConflict" {
 // CHECK-SAME:      @[[groupModule]](
 
 // -----
+
 firrtl.circuit "Test" {
   firrtl.module @Test() {}
 
@@ -133,42 +134,52 @@ firrtl.circuit "Test" {
   // Removal of Probe Colors
   //===--------------------------------------------------------------------===//
 
-  // CHECK-LABEL: @ColoredPorts(out %o : !firrtl.probe<uint<1>>, in %i : !firrtl.probe<uint<1>>)
-  firrtl.module @ColoredPorts(out %o : !firrtl.probe<uint<1>, @A>, in %i : !firrtl.probe<uint<1>, @A>) {}
+  // CHECK-LABEL: @ColoredPorts(out %o: !firrtl.probe<uint<1>>)
+  firrtl.module @ColoredPorts(out %o: !firrtl.probe<uint<1>, @A>) {}
 
-  // CHECK-LABEL: @ExtColoredPorts(out o : !firrtl.probe<uint<1>>, in i : !firrtl.probe<uint<1>>)
-  firrtl.extmodule @ExtColoredPorts(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>) {}
+  // CHECK-LABEL: @ExtColoredPorts(out o: !firrtl.probe<uint<1>>)
+  firrtl.extmodule @ExtColoredPorts(out o: !firrtl.probe<uint<1>, @A>)
 
   // CHECK-LABEL: @ColoredPortsOnInstances
-  firrtl.module @ColoredPortsOnInstances(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>) {
-     // CHECK: %foo_o, %foo_i = firrtl.instance @ColoredPorts()
-   %foo_o, %foo_i = firrtl.instance foo {layers = [@A]} @ColoredPorts(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>)
+  firrtl.module @ColoredPortsOnInstances() {
+    // CHECK: %foo_o = firrtl.instance foo @ColoredPorts(out o: !firrtl.probe<uint<1>>)
+   %foo_o = firrtl.instance foo @ColoredPorts(out o: !firrtl.probe<uint<1>, @A>)
   }
 
   // CHECK-LABEL: @ColoredThings
   firrtl.module @ColoredThings() {
     // CHECK: %0 = firrtl.wire : !firrtl.probe<bundle<f: uint<1>>>
     %0 = firrtl.wire : !firrtl.probe<bundle<f: uint<1>>, @A>
-    // CHECK: %1 = firrtl.sub %0[0] : !firrtl.probe<bundle<f: uint<1>>>
-    %1 = firrtl.sub %0[0] : !firrtl.probe<bundle<f: uint<1>>, @A>
+    // CHECK: %1 = firrtl.ref.sub %0[0] : !firrtl.probe<bundle<f: uint<1>>>
+    %1 = firrtl.ref.sub %0[0] : !firrtl.probe<bundle<f: uint<1>>, @A>
     // CHECK-NOT: firrtl.cast
-    %2 = firrtl.cast %1 : (!firrtl.probe<uint<1>, @A>) -> !firrtl.probe<uint<1>, @A::@B>
+    %2 = firrtl.ref.cast %1 : (!firrtl.probe<uint<1>, @A>) -> !firrtl.probe<uint<1>, @A::@B>
   }
 
   //===--------------------------------------------------------------------===//
   // Removal of Enabled Layers
   //===--------------------------------------------------------------------===//
 
-  // CHECK-LABEL: @EnabledLayers() {}
+  // CHECK-LABEL: @EnabledLayers() {
   firrtl.module @EnabledLayers() attributes {layers = [@A]} {}
 
   // CHECK-LABEL: @EnabledLayersOnInstance()
-  firrtl.module @EnabledLayersOnInstance() {
+  firrtl.module @EnabledLayersOnInstance() attributes {layers = [@A]} {
     // CHECK: firrtl.instance enabledLayers @EnabledLayers()
     firrtl.instance enabledLayers {layers = [@A]} @EnabledLayers()
   }
 
   //===--------------------------------------------------------------------===//
-  // Removal of Layerblocks
+  // Removal of Layerblocks and Layers
   //===--------------------------------------------------------------------===//
+
+  // CHECK-NOT: firrtl.layer @GoodbyeCruelWorld
+  firrtl.layer @GoodbyeCruelWorld bind {}
+
+  // CHECK-LABEL @WithLayerBlock
+  firrtl.module @WithLayerBlock() {
+    // CHECK-NOT firrtl.layerblock @GoodbyeCruelWorld
+    firrtl.layerblock @GoodbyeCruelWorld {
+    }
+  }
 }
