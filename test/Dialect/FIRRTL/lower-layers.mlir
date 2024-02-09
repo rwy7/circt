@@ -145,8 +145,22 @@ firrtl.circuit "Test" {
    %foo_o, %foo_i = firrtl.instance foo {layers = [@A]} @ColoredPorts(out o : !firrtl.probe<uint<1>, @A>, in i : !firrtl.probe<uint<1>, @A>)
   }
 
+  // CHECK-LABEL: @ColoredThings
+  firrtl.module @ColoredThings() {
+    // CHECK: %0 = firrtl.wire : !firrtl.probe<bundle<f: uint<1>>>
+    %0 = firrtl.wire : !firrtl.probe<bundle<f: uint<1>>, @A>
+    // CHECK: %1 = firrtl.sub %0[0] : !firrtl.probe<bundle<f: uint<1>>>
+    %1 = firrtl.sub %0[0] : !firrtl.probe<bundle<f: uint<1>>, @A>
+    // CHECK-NOT: firrtl.cast
+    %2 = firrtl.cast %1 : (!firrtl.probe<uint<1>, @A>) -> !firrtl.probe<uint<1>, @A::@B>
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Removal of Enabled Layers
+  //===--------------------------------------------------------------------===//
+
   // CHECK-LABEL: @EnabledLayers() {}
-  firrtl.module   @EnabledLayers() attributes {layers = [@A]} {}
+  firrtl.module @EnabledLayers() attributes {layers = [@A]} {}
 
   // CHECK-LABEL: @EnabledLayersOnInstance()
   firrtl.module @EnabledLayersOnInstance() {
@@ -155,6 +169,6 @@ firrtl.circuit "Test" {
   }
 
   //===--------------------------------------------------------------------===//
-  // Removal of Enabled Layers
+  // Removal of Layerblocks
   //===--------------------------------------------------------------------===//
 }
