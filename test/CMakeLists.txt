@@ -39,6 +39,8 @@ set(CIRCT_TEST_DEPENDS
   hlstool
   kanagawatool
   om-linker
+  hwml
+  hwml-lsp-server
   )
 
 if (CIRCT_GTEST_AVAILABLE)
