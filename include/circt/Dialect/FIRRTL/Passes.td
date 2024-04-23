@@ -908,4 +908,24 @@ def ModuleSummary :
     let constructor = "circt::firrtl::createModuleSummaryPass()";
   }
 
+def AssignOutputDirs : Pass<"firrtl-assign-output-dirs", "firrtl::CircuitOp"> {
+  let summary = "Assign output directories to modules and layers";
+  let description = [{
+    While some modules are assigned output directories by the user, many modules
+    "don't care" what output directory they placed into. This pass uses the
+    instance graph to assign these modules to the "narrowest" output directory
+    possible. For example, if a module is only instantiated under the
+    verification layer, then it might be assigned to the verification output
+    directory. If a module is instantiated under multiple directories, then it
+    is assigned to the directory that is the "least common ancestor" of all
+    directories it is instantiated under.
+
+    The least common ancestor is chosen according to a precedence graph provided
+    by the user through a circuit level annotation called
+    "DeclareOutputDirAnnotation". The root design directory is implicitly the
+    greatest ancestor of all output directories.
+  }];
+  let constructor = "circt::firrtl::createAssignOutputDirsPass()";
+}
+
 #endif // CIRCT_DIALECT_FIRRTL_PASSES_TD
