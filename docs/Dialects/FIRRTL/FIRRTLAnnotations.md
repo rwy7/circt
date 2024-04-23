@@ -1458,6 +1458,51 @@ Example:
 }
 ```
 
+### OutputDirAnnotation
+
+| Property   | Type   | Description                             |
+| ---------- | ------ | --------------------------------------- |
+| class      | string | `circt.OutputDirAnnotation`             |
+| dirname    | string | The output directory                    |
+| target     | string | Reference target                        |
+
+Specify the output directory for a module.
+
+Example:
+```json
+{
+  "class": "circt.OutputDirAnnotation",
+  "dirname": "verification",
+  "target": "~Foo|Bar"
+}
+```
+
+### DeclareOutputDirAnnotation
+
+| Property   | Type    | Description                             |
+| ---------- | ------- | --------------------------------------- |
+| class      | string  | `circt.DeclareOutputDirAnnotation`      |
+| name       | string  | The output directory                    |
+| parent     | string  | The parent output directory             |
+
+Specify a rating of preference for an output directory. When verilog is output,
+some public modules will have fixed output directories. Any module instantiated
+under such a module, is "pulled in" to that directory, too.
+
+If a module is instantiated under multiple output directories, we use this
+priority score as a tiebreaker. The module will be pulled into the candidate
+output directory with the highest score. If there is no clear winner, we emit
+an error.
+
+Example:
+```json
+{
+  "class": "circt.OutputDirPriorityAnnotation",
+  "dirname": "verification",
+  "value": 51
+}
+```
+
 ## Attributes in SV
 
 Some annotations transform into attributes consumed by non-FIRRTL passes.  This

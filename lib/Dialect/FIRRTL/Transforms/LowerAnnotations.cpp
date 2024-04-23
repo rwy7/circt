@@ -198,7 +198,6 @@ std::optional<AnnoPathValue> circt::firrtl::tryResolve(DictionaryAttr anno,
 /// An applier which puts the annotation on the target and drops the 'target'
 /// field from the annotation.  Optionally handles non-local annotations.
 LogicalResult circt::firrtl::applyWithoutTargetImpl(const AnnoPathValue &target,
-
                                                     DictionaryAttr anno,
                                                     ApplyState &state,
                                                     bool allowNonLocal) {
@@ -387,6 +386,50 @@ static LogicalResult applyLoadMemoryAnno(const AnnoPathValue &target,
   return success();
 }
 
+
+static LogicalResult applyOutputDirAnno(const AnnoPathValue &target,
+                                         DictionaryAttr anno,
+                                         ApplyState &state) {
+  auto *op = target.ref.getOp();
+  auto loc = op->getLoc();
+  auto error = [&]() {
+    auto diag = mlir::emitError(loc);
+    diag << "circuit.OutputDirAnno ";
+    return diag;
+  };
+
+  auto opTarget = target.ref.dyn_cast<OpAnnoTarget>();
+  if (!opTarget)
+    return error() << "must target a module object";
+
+  if (!target.isLocal())
+    return error() << "must be local";
+
+  auto conventionStrAttr =
+      tryGetAs<StringAttr>(anno, anno, "convention", loc, conventionAnnoClass);
+  if (!conventionStrAttr)
+    return failure();
+
+  auto conventionStr = conventionStrAttr.getValue();
+  auto conventionOpt = parseConvention(conventionStr);
+  if (!conventionOpt)
+    return error() << "unknown convention " << conventionStr;
+
+  auto convention = *conventionOpt;
+
+  if (auto moduleOp = dyn_cast<FModuleOp>(op)) {
+    moduleOp.setConvention(convention);
+    return success();
+  }
+
+  if (auto extModuleOp = dyn_cast<FExtModuleOp>(op)) {
+    extModuleOp.setConvention(convention);
+    return success();
+  }
+
+  return error() << "can only target to a module or extmodule";
+}
+
 //===----------------------------------------------------------------------===//
 // Driving table
 //===----------------------------------------------------------------------===//
@@ -480,6 +523,9 @@ static llvm::StringMap<AnnoRecord> annotationRecords{{
      {stdResolve, applyWithoutTarget<false, FModuleOp, FExtModuleOp>}},
     {metadataDirectoryAttrName, NoTargetAnnotation},
     {moduleHierAnnoClass, NoTargetAnnotation},
+    {outputDirAnnoClass,
+      {stdResolve, applyWithoutTarget<false, FModuleOp, LayerOp>}},
+    {declareOutputDirAnnoClass, NoTargetAnnotation},
     {sitestTestHarnessBlackBoxAnnoClass, NoTargetAnnotation},
     {testBenchDirAnnoClass, NoTargetAnnotation},
     {testHarnessHierAnnoClass, NoTargetAnnotation},
