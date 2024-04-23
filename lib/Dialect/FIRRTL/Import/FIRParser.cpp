@@ -5317,6 +5317,13 @@ ParseResult FIRCircuitParser::parseLayer(CircuitOp circuit) {
       return failure();
     }
     consumeToken();
+
+    hw::OutputFileAttr outputDir;
+    if (getToken().getKind() == FIRToken::string) {
+      outputDir = hw::OutputFileAttr::getAsDirectory(
+          getContext(), getToken().getStringValue());
+      consumeToken(FIRToken::string);
+    }
     if (parseToken(FIRToken::colon, "expected ':' after layer definition") ||
         info.parseOptionalInfo())
       return failure();
@@ -5324,6 +5331,8 @@ ParseResult FIRCircuitParser::parseLayer(CircuitOp circuit) {
     // Create the layer definition and give it an empty block.
     auto layerOp = builder.create<LayerOp>(info.getLoc(), id, *layerConvention);
     layerOp->getRegion(0).push_back(new Block());
+    if (outputDir)
+      layerOp->setAttr("output_file", outputDir);
     layerStack.push_back({indent, layerOp});
     return success();
   };
