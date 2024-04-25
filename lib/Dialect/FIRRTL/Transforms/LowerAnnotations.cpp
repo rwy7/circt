@@ -386,48 +386,38 @@ static LogicalResult applyLoadMemoryAnno(const AnnoPathValue &target,
   return success();
 }
 
-
 static LogicalResult applyOutputDirAnno(const AnnoPathValue &target,
-                                         DictionaryAttr anno,
-                                         ApplyState &state) {
+                                        DictionaryAttr anno,
+                                        ApplyState &state) {
   auto *op = target.ref.getOp();
+  auto *context = op->getContext();
   auto loc = op->getLoc();
+
   auto error = [&]() {
-    auto diag = mlir::emitError(loc);
-    diag << "circuit.OutputDirAnno ";
-    return diag;
+    return mlir::emitError(loc) << outputDirAnnoClass << " ";
   };
 
   auto opTarget = target.ref.dyn_cast<OpAnnoTarget>();
   if (!opTarget)
-    return error() << "must target a module object";
+    return error() << "must target a module";
 
   if (!target.isLocal())
     return error() << "must be local";
 
-  auto conventionStrAttr =
-      tryGetAs<StringAttr>(anno, anno, "convention", loc, conventionAnnoClass);
-  if (!conventionStrAttr)
+  auto dirname =
+      tryGetAs<StringAttr>(anno, anno, "dirname", loc, outputDirAnnoClass);
+  if (!dirname)
     return failure();
 
-  auto conventionStr = conventionStrAttr.getValue();
-  auto conventionOpt = parseConvention(conventionStr);
-  if (!conventionOpt)
-    return error() << "unknown convention " << conventionStr;
-
-  auto convention = *conventionOpt;
+  auto outputFile =
+      hw::OutputFileAttr::getAsDirectory(context, dirname.getValue());
 
   if (auto moduleOp = dyn_cast<FModuleOp>(op)) {
-    moduleOp.setConvention(convention);
+    moduleOp->setAttr("output_file", outputFile);
     return success();
   }
 
-  if (auto extModuleOp = dyn_cast<FExtModuleOp>(op)) {
-    extModuleOp.setConvention(convention);
-    return success();
-  }
-
-  return error() << "can only target to a module or extmodule";
+  return error() << "must target a module";
 }
 
 //===----------------------------------------------------------------------===//
@@ -523,8 +513,7 @@ static llvm::StringMap<AnnoRecord> annotationRecords{{
      {stdResolve, applyWithoutTarget<false, FModuleOp, FExtModuleOp>}},
     {metadataDirectoryAttrName, NoTargetAnnotation},
     {moduleHierAnnoClass, NoTargetAnnotation},
-    {outputDirAnnoClass,
-      {stdResolve, applyWithoutTarget<false, FModuleOp, LayerOp>}},
+    {outputDirAnnoClass, {stdResolve, applyOutputDirAnno}},
     {declareOutputDirAnnoClass, NoTargetAnnotation},
     {sitestTestHarnessBlackBoxAnnoClass, NoTargetAnnotation},
     {testBenchDirAnnoClass, NoTargetAnnotation},
