@@ -80,15 +80,7 @@ private:
 
 OutputDirTable::OutputDirTable(CircuitOp circuit) {
   // Stage 1: Build a table mapping child directories to their parents.
-  auto *context = circuit.getContext();
-
-  // The priority table is pre-seeded with well-known output directories.
-  auto sifiveViews = StringAttr::get(context, "sifive_views/");
-  auto testBench = StringAttr::get(context, "testbench/");
   DenseMap<StringAttr, StringAttr> parentTable;
-  parentTable[testBench] = sifiveViews;
-
-  // Pull additional precedence information from the circuit's annotations.
   AnnotationSet annos(circuit);
   for (auto anno : annos) {
     if (anno.isClass(declareOutputDirAnnoClass)) {
