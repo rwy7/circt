@@ -201,6 +201,7 @@ LogicalResult circt::firrtl::applyWithoutTargetImpl(const AnnoPathValue &target,
                                                     DictionaryAttr anno,
                                                     ApplyState &state,
                                                     bool allowNonLocal) {
+
   if (!allowNonLocal && !target.isLocal()) {
     Annotation annotation(anno);
     auto diag = mlir::emitError(target.ref.getOp()->getLoc())
