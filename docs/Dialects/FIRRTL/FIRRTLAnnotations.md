@@ -1485,21 +1485,27 @@ Example:
 | name       | string  | The output directory                    |
 | parent     | string  | The parent output directory             |
 
-Specify a rating of preference for an output directory. When verilog is output,
-some public modules will have fixed output directories. Any module instantiated
-under such a module, is "pulled in" to that directory, too.
+Specify the "parent" of an output directory.
 
-If a module is instantiated under multiple output directories, we use this
-priority score as a tiebreaker. The module will be pulled into the candidate
-output directory with the highest score. If there is no clear winner, we emit
-an error.
+When verilog is output, some modules will have user-specified output
+directories. If a private module is instantiated only under an output directory,
+then it can be "pulled in" to that directory, too.
+
+If a module is instantiated under multiple output directories, the module is
+placed in the output directory that is the least-common-ancestor of the module's
+uses. The least-common-ancestor is identified according to these output
+directory declaration annotations.
+
+The default output directory is implicitly the most general output directory.
+When a directory isn't explicitly declared, then the parent is presumed to be
+the default output directory.
 
 Example:
 ```json
 {
-  "class": "circt.OutputDirPriorityAnnotation",
-  "dirname": "verification",
-  "value": 51
+  "class": "circt.DeclareOutputDirAnnotation",
+  "name": "verification_extras",
+  "parent": "verification"
 }
 ```
 
