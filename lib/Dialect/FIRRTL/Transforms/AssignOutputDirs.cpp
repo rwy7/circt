@@ -49,8 +49,8 @@ namespace {
 struct OutputDirInfo {
   OutputDirInfo(unsigned depth, StringAttr parent)
       : depth(depth), parent(parent) {}
-  unsigned depth = 1;
-  StringAttr parent = nullptr;
+  unsigned depth;
+  StringAttr parent;
 };
 
 /// A table that helps decide which directory a floating module must be placed.
