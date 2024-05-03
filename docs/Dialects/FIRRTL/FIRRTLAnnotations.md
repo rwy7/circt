@@ -1487,18 +1487,23 @@ Example:
 
 Specify the "parent" of an output directory.
 
-When verilog is output, some modules will have user-specified output
-directories. If a private module is instantiated only under an output directory,
-then it can be "pulled in" to that directory, too.
+When Verilog is output, some modules will have user-specified output
+directories. When a module M is only instantiated by modules which have a common
+output directory D, we can also output module M in that same directory D.
 
-If a module is instantiated under multiple output directories, the module is
-placed in the output directory that is the least-common-ancestor of the module's
-uses. The least-common-ancestor is identified according to these output
-directory declaration annotations.
+If the module M is instantiated by modules which have different output
+directories DS, then the module M is placed in the output directory that is the
+least-common-ancestor (LCA) of the directories DS. The LCA is identified
+according to this output directory declaration annotation.
 
-The default output directory is implicitly the most general output directory.
-When a directory isn't explicitly declared, then the parent is presumed to be
-the default output directory.
+The intuition behind this annotation is that modules output in the declared
+directory should only depend on modules which are output in an ancestor
+directory. Then, the LCA can be thought of as the "most specific" output
+directory that still makes the module M available at all its instantiation
+sites.
+
+When an output directory isn't explicitly declared, then its parent directory is
+implicitly the default output directory.
 
 Example:
 ```json

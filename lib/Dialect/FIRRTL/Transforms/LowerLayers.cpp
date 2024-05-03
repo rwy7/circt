@@ -832,10 +832,10 @@ void LowerLayersPass::runOnOperation() {
     ::setOutputFile(footer, bindFile);
 
     if (!layerOp.getBody().getOps<LayerOp>().empty())
-      layers.push_back(
-          {layerOp,
-           builder.getStringAttr("`include \"" +
-                                 bindFile.getFilename().getValue() + "\"")});
+      layers.emplace_back(
+          layerOp,
+          builder.getStringAttr("`include \"" +
+                                bindFile.getFilename().getValue() + "\""));
   });
 
   // All layers definitions can now be deleted.

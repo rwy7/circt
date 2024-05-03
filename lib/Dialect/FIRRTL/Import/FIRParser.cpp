@@ -5320,8 +5320,10 @@ ParseResult FIRCircuitParser::parseLayer(CircuitOp circuit) {
 
     hw::OutputFileAttr outputDir;
     if (getToken().getKind() == FIRToken::string) {
-      outputDir = hw::OutputFileAttr::getAsDirectory(
-          getContext(), getToken().getStringValue());
+      auto text = getToken().getStringValue();
+      if (text.empty())
+        return emitError() << "output directory must not be blank";
+      outputDir = hw::OutputFileAttr::getAsDirectory(getContext(), text);
       consumeToken(FIRToken::string);
     }
     if (parseToken(FIRToken::colon, "expected ':' after layer definition") ||

@@ -14,6 +14,7 @@
 #include "circt/Dialect/HW/HWAttributes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Path.h"
 
 #define DEBUG_TYPE "firrtl-assign-output-dirs"
@@ -25,8 +26,11 @@ using namespace firrtl;
 // Directory Utilities
 //===----------------------------------------------------------------------===//
 
-static SmallString<128> canonicalize(const Twine &directory) {
+static SmallString<128> canonicalize(StringRef directory) {
   SmallString<128> native;
+  if (directory.empty())
+    return native;
+
   llvm::sys::path::native(directory, native);
   auto separator = llvm::sys::path::get_separator();
   if (!native.ends_with(separator))
@@ -37,8 +41,10 @@ static SmallString<128> canonicalize(const Twine &directory) {
 static StringAttr canonicalize(const StringAttr directory) {
   if (!directory)
     return nullptr;
+  if (directory.empty())
+    return nullptr;
   return StringAttr::get(directory.getContext(),
-                         canonicalize(Twine(directory.getValue())));
+                         canonicalize(directory.getValue()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -46,11 +52,14 @@ static StringAttr canonicalize(const StringAttr directory) {
 //===----------------------------------------------------------------------===//
 
 namespace {
+
 struct OutputDirInfo {
-  OutputDirInfo(unsigned depth, StringAttr parent)
-      : depth(depth), parent(parent) {}
-  unsigned depth;
-  StringAttr parent;
+  OutputDirInfo(StringAttr name, size_t depth = SIZE_MAX,
+                size_t parent = SIZE_MAX)
+      : name(name), depth(depth), parent(parent) {}
+  StringAttr name;
+  size_t depth;
+  size_t parent;
 };
 
 /// A table that helps decide which directory a floating module must be placed.
@@ -64,84 +73,125 @@ struct OutputDirInfo {
 /// a resource could go, which is still general enough to cover all uses.
 class OutputDirTable {
 public:
-  explicit OutputDirTable(CircuitOp);
+  LogicalResult initialize(CircuitOp);
 
   /// Given two directory names, returns the least-common-ancestor directory.
   /// If the LCA is the toplevel output directory (which is considered the most
   /// general), return null.
-  StringAttr join(StringAttr, StringAttr);
+  StringAttr lca(StringAttr, StringAttr);
 
 private:
-  OutputDirInfo get(StringAttr);
-
-  DenseMap<StringAttr, OutputDirInfo> info;
+  DenseMap<StringAttr, size_t> indexTable;
+  std::vector<OutputDirInfo> infoTable;
 };
 } // namespace
 
-OutputDirTable::OutputDirTable(CircuitOp circuit) {
+LogicalResult OutputDirTable::initialize(CircuitOp circuit) {
+  auto err = [&]() { return emitError(circuit.getLoc()); };
+
   // Stage 1: Build a table mapping child directories to their parents.
-  DenseMap<StringAttr, StringAttr> parentTable;
+  indexTable[nullptr] = 0;
+  infoTable.emplace_back(nullptr, 0, SIZE_MAX);
   AnnotationSet annos(circuit);
   for (auto anno : annos) {
     if (anno.isClass(declareOutputDirAnnoClass)) {
-      auto name = canonicalize(anno.getMember<StringAttr>("name"));
-      auto parent = canonicalize(anno.getMember<StringAttr>("parent"));
-      if (name)
-        parentTable[name] = parent;
+      auto nameField = anno.getMember<StringAttr>("name");
+      if (!nameField)
+        return err() << "output directory declaration missing name";
+      if (nameField.empty())
+        return err() << "output directory name cannot be empty";
+      auto name = canonicalize(nameField);
+
+      auto parentField = anno.getMember<StringAttr>("parent");
+      if (!parentField)
+        return err() << "output directory declaration missing parent";
+      auto parent = canonicalize(parentField);
+
+      auto parentIdx = infoTable.size();
+      {
+        auto [it, inserted] = indexTable.try_emplace(parent, parentIdx);
+        if (inserted)
+          infoTable.emplace_back(parent, SIZE_MAX, SIZE_MAX);
+        else
+          parentIdx = it->second;
+      }
+
+      {
+        auto [it, inserted] = indexTable.try_emplace(name, infoTable.size());
+        if (inserted) {
+          infoTable.emplace_back(name, SIZE_MAX, parentIdx);
+        } else {
+          auto &child = infoTable[it->second];
+          assert(child.name == name);
+          if (child.parent != SIZE_MAX)
+            return err() << "output directory " << name
+                         << " declared multiple times";
+          child.parent = parentIdx;
+        }
+      }
     }
   }
+  for (auto &info : infoTable)
+    if (info.parent == SIZE_MAX)
+      info.parent = 0;
 
   // Stage 2: Process the parentTable into a precedence graph.
-  info.insert({nullptr, {0, nullptr}});
-  SmallVector<std::pair<StringAttr, StringAttr>> stack;
-  for (auto [current, parent] : parentTable) {
-    auto it = info.find(current);
-    if (it != info.end())
+  SmallVector<size_t> stack;
+  BitVector seen(infoTable.size(), false);
+  for (unsigned i = 0, e = infoTable.size(); i < e; ++i) {
+    auto *current = &infoTable[i];
+    if (current->depth != SIZE_MAX)
       continue;
+    seen.reset();
+    seen.set(i);
     while (true) {
-      auto it = info.find(parent);
-      if (it == info.end()) {
-        stack.push_back({current, parent});
-        current = parent;
-        parent = parentTable.lookup(current);
+      seen.set(i);
+      auto *current = &infoTable[i];
+      auto *parent = &infoTable[current->parent];
+      if (seen[current->parent])
+        return emitError(circuit.getLoc())
+               << "circular precedence between output directories "
+               << current->name << " and " << parent->name;
+      if (parent->depth == SIZE_MAX) {
+        stack.push_back(i);
+        i = current->parent;
         continue;
       }
-      info.insert({current, {it->second.depth + 1, parent}});
+      current->depth = parent->depth + 1;
       if (stack.empty())
         break;
-      std::tie(current, parent) = stack.back();
+      i = stack.back();
       stack.pop_back();
     }
   }
+  return success();
 }
 
-OutputDirInfo OutputDirTable::get(StringAttr dir) {
-  return info.insert({dir, {1, nullptr}}).first->second;
-}
-
-StringAttr OutputDirTable::join(StringAttr a, StringAttr b) {
-  if (!a || !b)
+StringAttr OutputDirTable::lca(StringAttr nameA, StringAttr nameB) {
+  if (!nameA || !nameB)
     return nullptr;
-  if (a == b)
-    return a;
-  auto ainfo = get(a);
-  auto binfo = get(b);
-  while (ainfo.depth < binfo.depth) {
-    a = ainfo.parent;
-    ainfo = get(a);
+  if (nameA == nameB)
+    return nameA;
+
+  auto lookup = [&](StringAttr dir) -> OutputDirInfo {
+    auto it = indexTable.find(dir);
+    if (it != indexTable.end())
+      return infoTable[it->second];
+    return {dir, 1, 0};
+  };
+
+  auto a = lookup(nameA);
+  auto b = lookup(nameB);
+
+  while (a.depth > b.depth)
+    a = infoTable[a.parent];
+  while (b.depth > a.depth)
+    b = infoTable[b.parent];
+  while (a.name != b.name) {
+    a = infoTable[a.parent];
+    b = infoTable[b.parent];
   }
-  while (binfo.depth < ainfo.depth) {
-    b = binfo.parent;
-    binfo = get(b);
-  }
-  while (a != b) {
-    a = ainfo.parent;
-    b = binfo.parent;
-    ainfo = get(a);
-    binfo = get(b);
-  }
-  assert(a == b);
-  return a;
+  return a.name;
 }
 
 //===----------------------------------------------------------------------===//
@@ -164,7 +214,10 @@ static StringAttr getOutputDir(Operation *op) {
 void AssignOutputDirsPass::runOnOperation() {
   auto falseAttr = BoolAttr::get(&getContext(), false);
   auto circuit = getOperation();
-  OutputDirTable outDirTable(circuit);
+  OutputDirTable outDirTable;
+  if (failed(outDirTable.initialize(circuit)))
+    return signalPassFailure();
+
   DenseSet<InstanceGraphNode *> visited;
   for (auto *root : getAnalysis<InstanceGraph>()) {
     for (auto *node : llvm::inverse_post_order_ext(root, visited)) {
@@ -185,7 +238,7 @@ void AssignOutputDirsPass::runOnOperation() {
       for (; i != e; ++i) {
         if (auto parent =
                 dyn_cast<FModuleOp>((*i)->getParent()->getModule<FModuleOp>()))
-          outputDir = outDirTable.join(outputDir, getOutputDir(parent));
+          outputDir = outDirTable.lca(outputDir, getOutputDir(parent));
       }
       if (outputDir)
         module->setAttr("output_file", hw::OutputFileAttr::get(

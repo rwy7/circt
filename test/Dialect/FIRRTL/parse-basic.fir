@@ -1525,6 +1525,10 @@ circuit Layers:
     ; CHECK-NEXT:   }
     ; CHECK-NEXT: }
 
+  ; CHECK: firrtl.layer @WithDirectory1 bind attributes {output_file = #hw.output_file<"foo/">}
+  layer WithDirectory1, bind, "foo":
+  ; CHECK: firrtl.layer @WithDirectory2 bind attributes {output_file = #hw.output_file<"foo/">}
+  layer WithDirectory2, bind, "foo/":
 
 ;// -----
 ; CHECK-LABEL: firrtl.circuit "BasicProps"
