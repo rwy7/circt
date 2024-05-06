@@ -409,6 +409,8 @@ static LogicalResult applyOutputDirAnno(const AnnoPathValue &target,
       tryGetAs<StringAttr>(anno, anno, "dirname", loc, outputDirAnnoClass);
   if (!dirname)
     return failure();
+  if (dirname.empty())
+    return error() << "dirname must not be empty";
 
   auto outputFile =
       hw::OutputFileAttr::getAsDirectory(context, dirname.getValue());

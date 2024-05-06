@@ -417,3 +417,19 @@ firrtl.circuit "Issue5947"
     %mem = chirrtl.combmem : !chirrtl.cmemory<uint<1>, 2>
   }
 }
+
+// -----
+// An empty directory on an OutputDirAnnotation should fail.
+
+// expected-error @below {{Unable to apply annotation: {class = "circt.OutputDirAnnotation", dirname = "", target = "~Top|Top"}}}
+firrtl.circuit "Top" attributes {
+  rawAnnotations = [
+    {
+      class = "circt.OutputDirAnnotation",
+      dirname = "",
+      target = "~Top|Top"
+    }]
+  } {
+  // expected-error @below {{circt.OutputDirAnnotation dirname must not be empty}}
+  firrtl.module @Top() {}
+}
