@@ -221,7 +221,7 @@ void AssignOutputDirsPass::runOnOperation() {
   DenseSet<InstanceGraphNode *> visited;
   for (auto *root : getAnalysis<InstanceGraph>()) {
     for (auto *node : llvm::inverse_post_order_ext(root, visited)) {
-      auto module = dyn_cast<FModuleOp>(node->getModule());
+      auto module = dyn_cast<FModuleOp>(node->getModule().getOperation());
       if (!module || module->getAttrOfType<hw::OutputFileAttr>("output_file") ||
           module.isPublic())
         continue;
