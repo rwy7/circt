@@ -2,16 +2,16 @@
 FIRRTL version 4.0.0
 ; Two modules with *different* output directories should not dedup.
 circuit Top: %[[
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "XXX",
-        "target": "~Top|A"
-    },
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "YYY",
-        "target": "~Top|B"
-    }
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "XXX",
+    "target": "~Top|A"
+  },
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "YYY",
+    "target": "~Top|B"
+  }
 ]]
   ; CHECK: FILE "XXX/A.sv"
   ; CHECK: module A
@@ -44,16 +44,16 @@ FIRRTL version 4.0.0
 
 ; Two modules with the same output directory *should* dedup.
 circuit Top: %[[
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "XXX",
-        "target": "~Top|A"
-    },
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "XXX",
-        "target": "~Top|B"
-    }
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "XXX",
+    "target": "~Top|A"
+  },
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "XXX",
+    "target": "~Top|B"
+  }
 ]]
   ; CHECK: FILE "XXX/A.sv"
   ; CHECK: module A
@@ -87,11 +87,11 @@ FIRRTL version 4.0.0
 ; A module with an output directory anno should *not* dedup with a module that
 ; doesn't have one.
 circuit Top: %[[
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "YYY",
-        "target": "~Top|B"
-    }
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "YYY",
+    "target": "~Top|B"
+  }
 ]]
   ; CHECK-NOT: FILE "YYY/B.sv"
   ; CHECK: module A
@@ -123,17 +123,33 @@ circuit Top: %[[
 FIRRTL version 4.0.0
 
 circuit Top: %[[
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "XXX",
-        "target": "~Top|A"
-    },
-    {
-        "class": "circt.OutputDirAnnotation",
-        "dirname": "YYY",
-        "target": "~Top|B"
-    }
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "XXX",
+    "target": "~Top|A"
+  },
+  {
+    "class": "circt.OutputDirAnnotation",
+    "dirname": "YYY",
+    "target": "~Top|B"
+  },
+  {
+    "class": "circt.DeclareOutputDirAnnotation",
+    "name": "XXX",
+    "parent": "ZZZ"
+  },
+  {
+    "class": "circt.DeclareOutputDirAnnotation",
+    "name": "YYY",
+    "parent": "ZZZ"
+  },
+  {
+    "class": "circt.DeclareOutputDirAnnotation",
+    "name": "ZZZ",
+    "parent": ""
+  }
 ]]
+  ; CHECK: FILE "ZZZ/CA.sv"
   ; CHECK: module CA
   module CA:
     input i : UInt<8>
