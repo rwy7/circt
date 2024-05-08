@@ -1466,7 +1466,8 @@ Example:
 | dirname    | string | The output directory                    |
 | target     | string | Reference target                        |
 
-Specify the output directory for a module.
+Specify the output directory for a module. The target must be a module, and must
+be local.
 
 Example:
 ```json
@@ -1488,22 +1489,25 @@ Example:
 Specify the "parent" of an output directory.
 
 When Verilog is output, some modules will have user-specified output
-directories. When a module M is only instantiated by modules which have a common
-output directory D, we can also output module M in that same directory D.
+directories. When a module `M` is only instantiated by modules which have a
+common output directory `D`, we can also output module `M` in that same
+directory `D`.
 
-If the module M is instantiated by modules which have different output
-directories DS, then the module M is placed in the output directory that is the
-least-common-ancestor (LCA) of the directories DS. The LCA is identified
-according to this output directory declaration annotation.
+If the module M is instantiated under a set of directories `DS`, then the module
+`M` is placed in the output directory that is the least-common-ancestor (LCA) of
+the directories `DS`. The LCA is identified according to this output directory
+declaration annotation.
 
 The intuition behind this annotation is that modules output in the declared
 directory should only depend on modules which are output in an ancestor
 directory. Then, the LCA can be thought of as the "most specific" output
-directory that still makes the module M available at all its instantiation
+directory that still makes a module available at all its instantiation
 sites.
 
 When an output directory isn't explicitly declared, then its parent directory is
-implicitly the default output directory.
+implicitly the default output directory. To explicitly declare that a
+directory's parent is the default output directory, use an empty string as the
+parent.
 
 Example:
 ```json
