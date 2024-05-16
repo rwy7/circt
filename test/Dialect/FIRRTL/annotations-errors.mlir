@@ -428,8 +428,66 @@ firrtl.circuit "Top" attributes {
       class = "circt.OutputDirAnnotation",
       dirname = "",
       target = "~Top|Top"
-    }]
-  } {
+    }
+  ]
+} {
   // expected-error @below {{circt.OutputDirAnnotation dirname must not be empty}}
+  firrtl.module @Top() {}
+}
+
+// -----
+// An OutputDirAnnotation targeting an ExtModule should fail.
+
+// expected-error @below {{Unable to apply annotation: {class = "circt.OutputDirAnnotation", dirname = "foo", target = "~Top|Target"}}}
+firrtl.circuit "Top" attributes {
+  rawAnnotations = [
+    {
+      class = "circt.OutputDirAnnotation",
+      dirname = "foo",
+      target = "~Top|Target"
+    }
+  ]
+} {
+  firrtl.module @Top() {}
+  // expected-error @below {{circt.OutputDirAnnotation must target a module}}
+  firrtl.extmodule @Target()
+}
+
+// -----
+// An OutputDirAnnotation targeting a module which already has an output directory, should fail.
+
+// expected-error @below {{Unable to apply annotation: {class = "circt.OutputDirAnnotation", dirname = "bar", target = "~Top|Top"}}}
+firrtl.circuit "Top" attributes {
+  rawAnnotations = [
+    {
+      class = "circt.OutputDirAnnotation",
+      dirname = "bar",
+      target = "~Top|Top"
+    }
+  ]
+} {
+  // expected-error @below {{circt.OutputDirAnnotation target already has an output file}}
+  firrtl.module @Top() attributes {output_file = #hw.output_file<"foo">} {}
+}
+
+// -----
+// Multiple OutputDirAnnotation targeting the same module should fail.
+
+// expected-error @below {{Unable to apply annotation: {class = "circt.OutputDirAnnotation", dirname = "foo", target = "~Top|Top"}}}
+firrtl.circuit "Top" attributes {
+  rawAnnotations = [
+    {
+      class = "circt.OutputDirAnnotation",
+      dirname = "foo",
+      target = "~Top|Top"
+    },
+        {
+      class = "circt.OutputDirAnnotation",
+      dirname = "foo",
+      target = "~Top|Top"
+    }
+  ]
+} {
+  // expected-error @below {{circt.OutputDirAnnotation target already has an output file}}
   firrtl.module @Top() {}
 }

@@ -415,12 +415,15 @@ static LogicalResult applyOutputDirAnno(const AnnoPathValue &target,
   auto outputFile =
       hw::OutputFileAttr::getAsDirectory(context, dirname.getValue());
 
-  if (auto moduleOp = dyn_cast<FModuleOp>(op)) {
-    moduleOp->setAttr("output_file", outputFile);
-    return success();
-  }
+  auto moduleOp = dyn_cast<FModuleOp>(op);
+  if (!moduleOp)
+    return error() << "must target a module";
 
-  return error() << "must target a module";
+  if (moduleOp->hasAttr("output_file"))
+    return error() << "target already has an output file";
+
+  moduleOp->setAttr("output_file", outputFile);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
