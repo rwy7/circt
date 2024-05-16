@@ -13,7 +13,7 @@ firrtl.circuit "AssignOutputDirs"
       ]
   } {
 
-  firrtl.module private @AssignOutputDirs() {}
+  firrtl.module public @AssignOutputDirs() {}
 
   // R -> R
   // CHECK: firrtl.module private @ByR() {
@@ -74,16 +74,3 @@ firrtl.circuit "AssignOutputDirs"
     firrtl.instance byCD @ByCD()
   }
 }
-
-// when a module with an output directory is used, that 
-// directory is respected
-
-// when a module doesnt have an output directory, it's dragged
-
-// when a module is used in both a child and parent, it is dragged
-
-// when a module is used by two children, it is dragged to parent.
-
-// circular parent/child relationship
-// parent is null / root
-// child name is empty???
