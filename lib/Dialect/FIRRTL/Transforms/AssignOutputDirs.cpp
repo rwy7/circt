@@ -80,9 +80,12 @@ public:
   /// general), return null.
   StringAttr lca(StringAttr, StringAttr);
 
+  unsigned getNumLcaComputations() const { return numLcaComputations; }
+
 private:
   DenseMap<StringAttr, size_t> indexTable;
   std::vector<OutputDirInfo> infoTable;
+  unsigned numLcaComputations = 0;
 };
 } // namespace
 
@@ -173,15 +176,18 @@ StringAttr OutputDirTable::lca(StringAttr nameA, StringAttr nameB) {
   if (nameA == nameB)
     return nameA;
 
-  auto lookup = [&](StringAttr dir) -> OutputDirInfo {
-    auto it = indexTable.find(dir);
-    if (it != indexTable.end())
-      return infoTable[it->second];
-    return {dir, 1, 0};
-  };
+  auto lookupA = indexTable.find(nameA);
+  if (lookupA == indexTable.end())
+    return nullptr;
 
-  auto a = lookup(nameA);
-  auto b = lookup(nameB);
+  auto lookupB = indexTable.find(nameB);
+  if (lookupB == indexTable.end())
+    return nullptr;
+
+  ++numLcaComputations;
+
+  auto a = infoTable[lookupA->second];
+  auto b = infoTable[lookupB->second];
 
   while (a.depth > b.depth)
     a = infoTable[a.parent];
@@ -236,6 +242,8 @@ void AssignOutputDirsPass::runOnOperation() {
         }
       }
       for (; i != e; ++i) {
+        if (outputDir == nullptr)
+          break;
         if (auto parent =
                 dyn_cast<FModuleOp>((*i)->getParent()->getModule<FModuleOp>()))
           outputDir = outDirTable.lca(outputDir, getOutputDir(parent));
@@ -245,6 +253,8 @@ void AssignOutputDirsPass::runOnOperation() {
                                            outputDir, falseAttr, falseAttr));
     }
   }
+
+  numLcaComputations = outDirTable.getNumLcaComputations();
   markAllAnalysesPreserved();
 }
 

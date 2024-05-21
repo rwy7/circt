@@ -926,6 +926,13 @@ def AssignOutputDirs : Pass<"firrtl-assign-output-dirs", "firrtl::CircuitOp"> {
     common ancestor of all other output directories.
   }];
   let constructor = "circt::firrtl::createAssignOutputDirsPass()";
+  let statistics = [
+    Statistic<
+      "numLcaComputations",
+      "num-lca-computations",
+      "Number of times the LCA of two output directories is computed"
+    >
+  ];
 }
 
 #endif // CIRCT_DIALECT_FIRRTL_PASSES_TD
