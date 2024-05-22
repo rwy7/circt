@@ -97,7 +97,7 @@ LogicalResult OutputDirTable::initialize(CircuitOp circuit) {
   infoTable.emplace_back(nullptr, 0, SIZE_MAX);
   AnnotationSet annos(circuit);
   for (auto anno : annos) {
-    if (anno.isClass(declareOutputDirAnnoClass)) {
+    if (anno.isClass(ouputDirPrecedenceAnnoClass)) {
       auto nameField = anno.getMember<StringAttr>("name");
       if (!nameField)
         return err() << "output directory declaration missing name";

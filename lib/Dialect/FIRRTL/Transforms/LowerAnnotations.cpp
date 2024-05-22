@@ -518,7 +518,7 @@ static llvm::StringMap<AnnoRecord> annotationRecords{{
     {metadataDirectoryAttrName, NoTargetAnnotation},
     {moduleHierAnnoClass, NoTargetAnnotation},
     {outputDirAnnoClass, {stdResolve, applyOutputDirAnno}},
-    {declareOutputDirAnnoClass, NoTargetAnnotation},
+    {ouputDirPrecedenceAnnoClass, NoTargetAnnotation},
     {sitestTestHarnessBlackBoxAnnoClass, NoTargetAnnotation},
     {testBenchDirAnnoClass, NoTargetAnnotation},
     {testHarnessHierAnnoClass, NoTargetAnnotation},

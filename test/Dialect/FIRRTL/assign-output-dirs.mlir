@@ -7,9 +7,9 @@ firrtl.circuit "AssignOutputDirs"
       //    A       B
       //  C   D
       annotations = [
-        {class = "circt.DeclareOutputDirAnnotation", name = "B", parent = ""},
-        {class = "circt.DeclareOutputDirAnnotation", name = "C", parent = "A"},
-        {class = "circt.DeclareOutputDirAnnotation", name = "D", parent = "A"}
+        {class = "circt.OutputDirPrecedenceAnnotation", name = "B", parent = ""},
+        {class = "circt.OutputDirPrecedenceAnnotation", name = "C", parent = "A"},
+        {class = "circt.OutputDirPrecedenceAnnotation", name = "D", parent = "A"}
       ]
   } {
 

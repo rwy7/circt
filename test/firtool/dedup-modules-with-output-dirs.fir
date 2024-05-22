@@ -134,17 +134,17 @@ circuit Top: %[[
     "target": "~Top|B"
   },
   {
-    "class": "circt.DeclareOutputDirAnnotation",
+    "class": "circt.OutputDirPrecedenceAnnotation",
     "name": "XXX",
     "parent": "ZZZ"
   },
   {
-    "class": "circt.DeclareOutputDirAnnotation",
+    "class": "circt.OutputDirPrecedenceAnnotation",
     "name": "YYY",
     "parent": "ZZZ"
   },
   {
-    "class": "circt.DeclareOutputDirAnnotation",
+    "class": "circt.OutputDirPrecedenceAnnotation",
     "name": "ZZZ",
     "parent": ""
   }

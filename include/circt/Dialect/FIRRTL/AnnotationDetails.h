@@ -80,8 +80,8 @@ constexpr const char *testBenchDirAnnoClass =
 constexpr const char *moduleHierAnnoClass =
     "sifive.enterprise.firrtl.ModuleHierarchyAnnotation";
 constexpr const char *outputDirAnnoClass = "circt.OutputDirAnnotation";
-constexpr const char *declareOutputDirAnnoClass =
-    "circt.DeclareOutputDirAnnotation";
+constexpr const char *ouputDirPrecedenceAnnoClass =
+    "circt.OutputDirPrecedenceAnnotation";
 constexpr const char *testHarnessHierAnnoClass =
     "sifive.enterprise.firrtl.TestHarnessHierarchyAnnotation";
 constexpr const char *retimeModulesFileAnnoClass =

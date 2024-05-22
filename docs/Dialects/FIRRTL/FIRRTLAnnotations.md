@@ -1478,11 +1478,11 @@ Example:
 }
 ```
 
-### DeclareOutputDirAnnotation
+### OutputDirPrecedenceAnnotation
 
 | Property   | Type    | Description                             |
 | ---------- | ------- | --------------------------------------- |
-| class      | string  | `circt.DeclareOutputDirAnnotation`      |
+| class      | string  | `circt.OutputDirPrecedenceAnnotation`      |
 | name       | string  | The output directory                    |
 | parent     | string  | The parent output directory             |
 
@@ -1512,7 +1512,7 @@ parent.
 Example:
 ```json
 {
-  "class": "circt.DeclareOutputDirAnnotation",
+  "class": "circt.OutputDirPrecedenceAnnotation",
   "name": "verification_extras",
   "parent": "verification"
 }

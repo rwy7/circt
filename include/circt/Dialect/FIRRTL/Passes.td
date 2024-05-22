@@ -922,7 +922,7 @@ def AssignOutputDirs : Pass<"firrtl-assign-output-dirs", "firrtl::CircuitOp"> {
 
     The least common ancestor is chosen according to a precedence graph provided
     by the user through a circuit level annotation called
-    `DeclareOutputDirAnnotation`. The default output directory is implicitly the
+    `OutputDirPrecedenceAnnotation`. The default output directory is implicitly the
     common ancestor of all other output directories.
   }];
   let constructor = "circt::firrtl::createAssignOutputDirsPass()";
