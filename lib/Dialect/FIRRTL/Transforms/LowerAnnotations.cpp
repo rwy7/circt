@@ -398,7 +398,7 @@ static LogicalResult applyOutputDirAnno(const AnnoPathValue &target,
     return mlir::emitError(loc) << outputDirAnnoClass << " ";
   };
 
-  auto opTarget = target.ref.dyn_cast<OpAnnoTarget>();
+  auto opTarget = dyn_cast<OpAnnoTarget>(target.ref);
   if (!opTarget)
     return error() << "must target a module";
   if (!target.isLocal())
