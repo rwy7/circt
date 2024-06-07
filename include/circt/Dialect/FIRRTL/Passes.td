@@ -915,15 +915,15 @@ def AssignOutputDirs : Pass<"firrtl-assign-output-dirs", "firrtl::CircuitOp"> {
     "don't care" what output directory they are placed into. This pass uses the
     instance graph to assign these modules to the "narrowest" output directory
     possible. For example, if a module is only instantiated under the
-    verification layer, then it might be assigned to the verification output
-    directory. If a module is instantiated under multiple directories, then it
-    is assigned to the directory that is the "least common ancestor" of all
-    directories it is instantiated under.
+    verification directory, then this pass will sink that module into the
+    verification directory, too. If a module is instantiated under multiple
+    directories, then the module is assigned to the directory that is the "least
+    common ancestor" of all directories it is instantiated under.
 
     The least common ancestor is chosen according to a precedence graph provided
     by the user through a circuit level annotation called
-    `OutputDirPrecedenceAnnotation`. The default output directory is implicitly the
-    common ancestor of all other output directories.
+    `OutputDirPrecedenceAnnotation`. The default output directory is implicitly 
+    the common ancestor of all other output directories.
   }];
   let constructor = "circt::firrtl::createAssignOutputDirsPass()";
   let statistics = [

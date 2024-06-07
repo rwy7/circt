@@ -1921,3 +1921,35 @@ firrtl.circuit "Top" attributes {
   // CHECK-SAME:  attributes {output_file = #hw.output_file<"foobarbaz/">}
   firrtl.module @Top() {}
 }
+
+// -----
+
+// CHECK-LABEL: firrtl.circuit "Top"
+firrtl.circuit "Top" attributes {
+  rawAnnotations = [
+    {
+      class = "circt.OutputDirAnnotation",
+      dirname = "foobarbaz/",
+      target = "~Top|Top"
+    }]
+  } {
+  // CHECK-LABEL: firrtl.module @Top
+  // CHECK-SAME:  attributes {output_file = #hw.output_file<"foobarbaz/">}
+  firrtl.module @Top() {}
+}
+
+// -----
+
+// CHECK-LABEL: firrtl.circuit "Top"
+firrtl.circuit "Top" attributes {
+  rawAnnotations = [
+    {
+      class = "circt.OutputDirAnnotation",
+      dirname = "foobarbaz/qux",
+      target = "~Top|Top"
+    }]
+  } {
+  // CHECK-LABEL: firrtl.module @Top
+  // CHECK-SAME:  attributes {output_file = #hw.output_file<"foobarbaz/qux/">}
+  firrtl.module @Top() {}
+}

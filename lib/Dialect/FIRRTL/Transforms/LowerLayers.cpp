@@ -131,8 +131,6 @@ class LowerLayersPass : public LowerLayersBase<LowerLayersPass> {
         /*excludeFromFileList=*/true);
   }
 
-  void recordExtractedModuleNames();
-
   /// For each layer declared in the design, determine it's output directory.
   void recordLayerOutputDirs();
 
@@ -173,11 +171,8 @@ class LowerLayersPass : public LowerLayersBase<LowerLayersPass> {
   /// A map of layer blocks to module name that should be created for it.
   DenseMap<LayerBlockOp, StringRef> moduleNames;
 
+  /// A map from layer name to its output directory attribute.
   DenseMap<SymbolRefAttr, hw::OutputFileAttr> layerOutputDirTable;
-
-  hw::OutputFileAttr getLayerOutputDir(SymbolRefAttr ref) {
-    return layerOutputDirTable[ref];
-  }
 };
 
 static Operation *setOutputFile(Operation *op, hw::OutputFileAttr file);
@@ -196,7 +191,7 @@ FModuleOp LowerLayersPass::buildNewModule(OpBuilder &builder,
       location, builder.getStringAttr(namehint),
       ConventionAttr::get(builder.getContext(), Convention::Internal), ports,
       ArrayAttr{});
-  if (auto dir = getLayerOutputDir(layerBlock.getLayerNameAttr())) {
+  if (auto dir = layerOutputDirTable[layerBlock.getLayerNameAttr()]) {
     ::setOutputFile(newModule, dir);
   }
   SymbolTable::setSymbolVisibility(newModule, SymbolTable::Visibility::Private);
@@ -633,23 +628,10 @@ void LowerLayersPass::setOutputFile(Operation *op, const Twine &filename) {
                                               /*excludeFromFileList=*/true));
 }
 
-/// For each layerblock under the given module, record the
-/// name of the generated/extracted module.
-void LowerLayersPass::recordExtractedModuleNames() {
-  auto circuit = getOperation();
-  CircuitNamespace ns(circuit);
-  for (auto &op : *circuit.getBodyBlock()) {
-    if (auto module = dyn_cast<FModuleOp>(op)) {
-      module->walk([&](LayerBlockOp layerBlock) {
-        auto name = moduleNameForLayer(module.getModuleName(),
-                                       layerBlock.getLayerName());
-        moduleNames.insert({layerBlock, ns.newName(name)});
-      });
-    }
-  }
-}
-
 void LowerLayersPass::recordLayerOutputDirs() {
+  // For each layer declaration in the circuit, if the layer has an output
+  // file attribute, record it. We'll use the output file of layer declarations
+  // to choose the output directories of any modules created from a layerblock.
   using LayerOpIter = Block::op_iterator<LayerOp>;
   using LayerOpRange = std::pair<LayerOpIter, LayerOpIter>;
 

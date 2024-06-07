@@ -138,7 +138,7 @@ LogicalResult OutputDirTable::initialize(CircuitOp circuit) {
     if (info.parent == SIZE_MAX)
       info.parent = 0;
 
-  // Stage 2: Process the parentTable into a precedence graph.
+  // Stage 2: Set the depth/priority of each directory, and check for cycles.
   SmallVector<size_t> stack;
   BitVector seen(infoTable.size(), false);
   for (unsigned i = 0, e = infoTable.size(); i < e; ++i) {

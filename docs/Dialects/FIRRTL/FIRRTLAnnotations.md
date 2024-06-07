@@ -1482,7 +1482,7 @@ Example:
 
 | Property   | Type    | Description                             |
 | ---------- | ------- | --------------------------------------- |
-| class      | string  | `circt.OutputDirPrecedenceAnnotation`      |
+| class      | string  | `circt.OutputDirPrecedenceAnnotation`   |
 | name       | string  | The output directory                    |
 | parent     | string  | The parent output directory             |
 
