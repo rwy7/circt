@@ -28,7 +28,7 @@ jobs:
         run: |
           git config --global --add safe.directory $PWD
 
-      # --------
+      # -------
       # Lint the CIRCT C++ code.
       # -------
 
@@ -170,9 +170,9 @@ jobs:
         run: |
           git config --global --add safe.directory $PWD
 
-      # --------
+      # -------
       # Restore LLVM from cache and build if it's not in there.
-      # --------
+      # -------
 
       # Extract the LLVM submodule hash for use in the cache key.
       - name: Get LLVM Hash
@@ -200,11 +200,11 @@ jobs:
         if: steps.cache-llvm.outputs.cache-hit != 'true'
         run: utils/build-llvm.sh build install ${{ matrix.compiler.mode }} ${{ matrix.compiler.cc }} ${{ matrix.compiler.cxx }}
 
-      # --------
-      # Build and test CIRCT
-      # --------
+      # -------
+      # Configure CIRCT
+      # -------
 
-      - name: Build and Test CIRCT
+      - name: Configure CIRCT
         run: |
           mkdir build
           cd build
@@ -222,10 +222,8 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DLLVM_LIT_ARGS="-v" \
             -DCIRCT_SLANG_FRONTEND_ENABLED=ON
-          ninja check-circt check-circt-unit -j$(nproc)
-          ninja circt-doc
 
-      # --------
+      # -------
       # Lint the CIRCT C++ code.
       # -------
 
@@ -240,7 +238,6 @@ jobs:
           # Base ref is the target branch, in text form (not hash)
           PR_BASE: ${{ github.base_ref }}
         run: |
-          # Run clang-format
           if [ -z "$PR_BASE" ]; then
             DIFF_COMMIT_NAME="HEAD^"
           else
@@ -266,43 +263,19 @@ jobs:
       # Run clang-tidy against only the changes. The 'clang-tidy-diff' script
       # does this if supplied with the diff.
       - name: clang-tidy
-        if: ${{ always() }}
         run: |
-          git diff -U0 $DIFF_COMMIT...HEAD | \
-            clang-tidy-diff -path build -p1 -fix -j$(nproc)
-          git clang-format -f $DIFF_COMMIT
-          git diff --ignore-submodules > clang-tidy.patch
-          if [ -s clang-tidy.patch ]; then
-            echo "Clang-tidy problems in the following files. " \
-              "See diff in the clang-tidy.patch artifact."
-            git diff --ignore-submodules --name-only
+          git diff -U0 $DIFF_COMMIT..HEAD | clang-tidy-diff -path build -p1 -fix -j$(nproc)
+          if [ $? -ne 0 ]; then
+            git diff --ignore-submodules
             git checkout .
             exit 1
           fi
-          echo "Clang-tidy found no problems"
-          exit 0
 
-      # Upload the tidy patches to an artifact (zip'd) associated
-      # with the workflow run. Only run this on a failure.
-      - name: Upload tidy patches
-        uses: actions/upload-artifact@v3
-        continue-on-error: true
-        if: ${{ failure() }}
-        with:
-          name: clang-tidy-patches
-          path: clang-*.patch
+      # -------
+      # Build and test CIRCT
+      # -------
 
-      # Unfortunately, artifact uploads are always zips so display the diff as
-      # well to provide feedback at a glance.
-      - name: clang tidy patches display
-        if: ${{ failure() }}
-        continue-on-error: true
-        run: |
-          if [ ! -z clang-tidy.patch ]; then
-            echo "Clang-tidy patch"
-            echo "================"
-            cat clang-tidy.patch
-            echo "================"
-          fi
+      - name: Build and Test CIRCT
+        run: cmake --build ./build --parallel $(nproc) --target check-circt check-circt-unit circt-doc
 
     # --- end of build-circt job.
