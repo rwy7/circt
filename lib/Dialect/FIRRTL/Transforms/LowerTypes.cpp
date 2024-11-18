@@ -20,8 +20,8 @@
 //
 // Each processing of an op peels one layer of aggregate type off.  Because new
 // ops are inserted immediately above the current up, the walk will visit them
-// next, effectively recusing on the aggregate types, without recusing.  These
-// potentially temporary ops(if the aggregate is complex) effectively serve as
+// next, effectively recusing on the aggregate types, without recursing.  These
+// potentially temporary ops (if the aggregate is complex) effectively serve as
 // the worklist.  Often aggregates are shallow, so the new ops are the final
 // ones.
 //
@@ -1146,8 +1146,9 @@ bool TypeLoweringVisitor::visitDecl(FModuleOp module) {
   auto newArgs = llvm::map_to_vector(module.getPorts(), [](auto pi) {
     return PortInfoWithIP{pi, std::nullopt};
   });
-  for (size_t argIndex = 0, argsRemoved = 0; argIndex < newArgs.size();
-       ++argIndex) {
+
+  size_t argsRemoved = 0;
+  for (size_t argIndex = 0; argIndex < newArgs.size(); ++argIndex) {
     SmallVector<Value> lowerings;
     if (lowerArg(module, argIndex, argsRemoved, newArgs, lowerings)) {
       auto arg = module.getArgument(argIndex);
@@ -1160,10 +1161,17 @@ bool TypeLoweringVisitor::visitDecl(FModuleOp module) {
   }
 
   // Remove block args that have been lowered.
-  body->eraseArguments(argsToRemove);
-  for (auto deadArg = argsToRemove.find_last(); deadArg != -1;
-       deadArg = argsToRemove.find_prev(deadArg))
-    newArgs.erase(newArgs.begin() + deadArg);
+  if (argsRemoved != 0) {
+    body->eraseArguments(argsToRemove);
+    size_t size = newArgs.size();
+    for (size_t src = 0, dst = 0; src < size; ++src) {
+      if (argsToRemove[src])
+        continue;
+      newArgs[dst] = newArgs[src];
+      ++dst;
+    }
+    newArgs.erase(newArgs.end() - argsRemoved, newArgs.end());
+  }
 
   SmallVector<NamedAttribute, 8> newModuleAttrs;
 
