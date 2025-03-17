@@ -70,6 +70,7 @@ def InstanceOp : HardwareDeclOp<"instance", [
                        PortAnnotationsAttr:$portAnnotations,
                        LayerArrayAttr:$layers,
                        UnitAttr:$lowerToBind,
+                       UnitAttr:$doNotPrint,
                        OptionalAttr<InnerSymAttr>:$inner_sym);
 
   let results = (outs Variadic<AnyType>:$results);
@@ -87,6 +88,7 @@ def InstanceOp : HardwareDeclOp<"instance", [
                    CArg<"ArrayRef<Attribute>", "{}">:$portAnnotations,
                    CArg<"::mlir::ArrayRef<Attribute>", "{}">:$layers,
                    CArg<"bool","false">:$lowerToBind,
+                   CArg<"bool","false">:$doNotPrint,
                    CArg<"StringAttr", "StringAttr()">:$innerSym)>,
     OpBuilder<(ins "::mlir::TypeRange":$resultTypes,
                    "::mlir::StringRef":$moduleName,
@@ -98,6 +100,7 @@ def InstanceOp : HardwareDeclOp<"instance", [
                    "ArrayRef<Attribute>":$portAnnotations,
                    "::mlir::ArrayRef<Attribute>":$layers,
                    "bool":$lowerToBind,
+                   "bool":$doNotPrint,
                    "hw::InnerSymAttr":$innerSym)>,
 
     /// Constructor when you have the target module in hand.
@@ -107,6 +110,7 @@ def InstanceOp : HardwareDeclOp<"instance", [
                    CArg<"ArrayRef<Attribute>", "{}">:$annotations,
                    CArg<"ArrayRef<Attribute>", "{}">:$portAnnotations,
                    CArg<"bool","false">:$lowerToBind,
+                   CArg<"bool","false">:$doNotPrint,
                    CArg<"hw::InnerSymAttr", "hw::InnerSymAttr()">:$innerSym)>,
 
     /// Constructor when you have a port info list in hand.
@@ -117,6 +121,7 @@ def InstanceOp : HardwareDeclOp<"instance", [
                    CArg<"ArrayRef<Attribute>", "{}">:$annotations,
                    CArg<"ArrayRef<Attribute>", "{}">:$layers,
                    CArg<"bool","false">:$lowerToBind,
+                   CArg<"bool","false">:$doNotPrint,
                    CArg<"hw::InnerSymAttr", "hw::InnerSymAttr()">:$innerSym)>
   ];
 
