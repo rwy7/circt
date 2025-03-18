@@ -571,10 +571,11 @@ private:
   LogicalResult
   lowerModulePortsAndMoveBody(FModuleOp oldModule, hw::HWModuleOp newModule,
                               CircuitLoweringState &loweringState);
-  LogicalResult lowerModuleOperations(hw::HWModuleOp module,
-                                      CircuitLoweringState &loweringState);
+  LogicalResult lowerModuleBody(hw::HWModuleOp module,
+                                CircuitLoweringState &state);
   LogicalResult lowerFormalBody(verif::FormalOp formalOp,
-                                CircuitLoweringState &loweringState);
+                                CircuitLoweringState &state);
+  LogicalResult lowerBody(Operation *op, CircuitLoweringState &state);
 };
 
 } // end anonymous namespace
@@ -616,8 +617,7 @@ void FIRRTLModuleLowering::runOnOperation() {
                              verificationFlavor, getAnalysis<InstanceGraph>(),
                              &getAnalysis<NLATable>());
 
-  SmallVector<hw::HWModuleOp, 32> modulesToProcess;
-  SmallVector<verif::FormalOp> formalOpsToProcess;
+  SmallVector<Operation *, 32> opsToProcess;
 
   AnnotationSet circuitAnno(circuit);
   moveVerifAnno(getOperation(), circuitAnno, extractAssertAnnoClass,
@@ -641,7 +641,7 @@ void FIRRTLModuleLowering::runOnOperation() {
                 return failure();
 
               state.recordModuleMapping(&op, loweredMod);
-              modulesToProcess.push_back(loweredMod);
+              opsToProcess.push_back(loweredMod);
               // Lower all the alias types.
               module.walk([&](Operation *op) {
                 for (auto res : op->getResults()) {
@@ -675,7 +675,7 @@ void FIRRTLModuleLowering::runOnOperation() {
                   oldFormalOp.getParametersAttr());
               newFormalOp.getBody().emplaceBlock();
               state.recordModuleMapping(oldFormalOp, newFormalOp);
-              formalOpsToProcess.push_back(newFormalOp);
+              opsToProcess.push_back(newFormalOp);
               return success();
             })
             .Default([&](Operation *op) {
@@ -733,18 +733,11 @@ void FIRRTLModuleLowering::runOnOperation() {
         ->setAttr(moduleHierarchyFileAttrName,
                   ArrayAttr::get(&getContext(), testHarnessHierarchyFiles));
 
-  // Lower all module bodies.
-  auto result = mlir::failableParallelForEachN(
-      &getContext(), 0, modulesToProcess.size(), [&](auto index) {
-        return lowerModuleOperations(modulesToProcess[index], state);
+  // Lower all module and formal op bodies.
+  auto result =
+      mlir::failableParallelForEach(&getContext(), opsToProcess, [&](auto op) {
+        return lowerBody(op, state);
       });
-  if (failed(result))
-    return signalPassFailure();
-
-  // Lower all formal op bodies.
-  result = mlir::failableParallelForEach(
-      &getContext(), formalOpsToProcess,
-      [&](auto op) { return lowerFormalBody(op, state); });
   if (failed(result))
     return signalPassFailure();
 
@@ -1854,9 +1847,20 @@ private:
 };
 } // end anonymous namespace
 
-LogicalResult FIRRTLModuleLowering::lowerModuleOperations(
-    hw::HWModuleOp module, CircuitLoweringState &loweringState) {
+LogicalResult
+FIRRTLModuleLowering::lowerModuleBody(hw::HWModuleOp module,
+                                      CircuitLoweringState &loweringState) {
   return FIRRTLLowering(module, loweringState).run();
+}
+
+LogicalResult
+FIRRTLModuleLowering::lowerBody(Operation *op,
+                                CircuitLoweringState &loweringState) {
+  if (auto moduleOp = dyn_cast<hw::HWModuleOp>(op))
+    return lowerModuleBody(moduleOp, loweringState);
+  if (auto formalOp = dyn_cast<verif::FormalOp>(op))
+    return lowerFormalBody(formalOp, loweringState);
+  return failure();
 }
 
 // This is the main entrypoint for the lowering pass.
