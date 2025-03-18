@@ -575,6 +575,7 @@ private:
                                 CircuitLoweringState &state);
   LogicalResult lowerFormalBody(verif::FormalOp formalOp,
                                 CircuitLoweringState &state);
+  LogicalResult lowerFileBody(emit::FileOp op);
   LogicalResult lowerBody(Operation *op, CircuitLoweringState &state);
 };
 
@@ -676,6 +677,11 @@ void FIRRTLModuleLowering::runOnOperation() {
               newFormalOp.getBody().emplaceBlock();
               state.recordModuleMapping(oldFormalOp, newFormalOp);
               opsToProcess.push_back(newFormalOp);
+              return success();
+            })
+            .Case<emit::FileOp>([&](auto fileOp) {
+              fileOp->moveBefore(topLevelModule, topLevelModule->end());
+              opsToProcess.push_back(fileOp);
               return success();
             })
             .Default([&](Operation *op) {
@@ -1741,6 +1747,7 @@ struct FIRRTLLowering : public FIRRTLVisitor<FIRRTLLowering, LogicalResult> {
   LogicalResult visitStmt(RefForceInitialOp op);
   LogicalResult visitStmt(RefReleaseOp op);
   LogicalResult visitStmt(RefReleaseInitialOp op);
+  LogicalResult visitStmt(BindOp op);
 
   FailureOr<Value> lowerSubindex(SubindexOp op, Value input);
   FailureOr<Value> lowerSubaccess(SubaccessOp op, Value input);
@@ -1853,6 +1860,18 @@ FIRRTLModuleLowering::lowerModuleBody(hw::HWModuleOp module,
   return FIRRTLLowering(module, loweringState).run();
 }
 
+LogicalResult FIRRTLModuleLowering::lowerFileBody(emit::FileOp fileOp) {
+  OpBuilder b(&getContext());
+  fileOp->walk([&](Operation *op) {
+    if (auto bindOp = dyn_cast<BindOp>(op)) {
+      b.setInsertionPointAfter(bindOp);
+      b.create<sv::BindOp>(bindOp.getLoc(), bindOp.getInstanceAttr());
+      bindOp->erase();
+    }
+  });
+  return success();
+}
+
 LogicalResult
 FIRRTLModuleLowering::lowerBody(Operation *op,
                                 CircuitLoweringState &loweringState) {
@@ -1860,6 +1879,8 @@ FIRRTLModuleLowering::lowerBody(Operation *op,
     return lowerModuleBody(moduleOp, loweringState);
   if (auto formalOp = dyn_cast<verif::FormalOp>(op))
     return lowerFormalBody(formalOp, loweringState);
+  if (auto fileOp = dyn_cast<emit::FileOp>(op))
+    return lowerFileBody(fileOp);
   return failure();
 }
 
@@ -4901,6 +4922,12 @@ LogicalResult FIRRTLLowering::visitStmt(AttachOp op) {
             [&]() { builder.create<sv::AliasOp>(inoutValues); });
       });
 
+  return success();
+}
+
+LogicalResult FIRRTLLowering::visitStmt(BindOp op) {
+  llvm::errs() << "foo \n";
+  builder.create<sv::BindOp>(op.getInstanceAttr());
   return success();
 }
 
