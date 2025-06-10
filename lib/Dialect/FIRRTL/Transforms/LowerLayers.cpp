@@ -21,7 +21,6 @@
 #include "circt/Support/Utils.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Mutex.h"
 
@@ -169,7 +168,7 @@ macroNameForLayer(StringRef circuitName,
 }
 
 //===----------------------------------------------------------------------===//
-// LowerLayersPass
+// BindFileInfo
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -185,8 +184,17 @@ struct BindFileInfo {
 };
 } // namespace
 
-class LowerLayersPass
-    : public circt::firrtl::impl::LowerLayersBase<LowerLayersPass> {
+//===----------------------------------------------------------------------===//
+// LowerLayers
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct LowerLayers {
+  static LogicalResult run(MLIRContext *context, InstanceGraph &ig,
+                           CircuitOp circuitOp);
+
+  LowerLayers(MLIRContext *context, InstanceGraph &ig, CircuitOp circuitOp);
+
   hw::OutputFileAttr getOutputFile(SymbolRefAttr layerName) {
     auto layer = symbolToLayer.lookup(layerName);
     if (!layer)
@@ -198,11 +206,10 @@ class LowerLayersPass
                                         SymbolRefAttr layerName) {
     if (auto file = getOutputFile(layerName))
       return hw::OutputFileAttr::getFromDirectoryAndFilename(
-          &getContext(), file.getDirectory(),
-          fileNameForLayer(moduleName, layerName),
+          context, file.getDirectory(), fileNameForLayer(moduleName, layerName),
           /*excludeFromFileList=*/true);
     return hw::OutputFileAttr::getFromFilename(
-        &getContext(), fileNameForLayer(moduleName, layerName),
+        context, fileNameForLayer(moduleName, layerName),
         /*excludeFromFileList=*/true);
   }
 
@@ -227,27 +234,30 @@ class LowerLayersPass
   void lowerInlineLayerBlock(LayerOp layer, LayerBlockOp layerBlock);
 
   /// Build macro declarations and cache information about the layers.
-  void preprocessLayers(CircuitNamespace &ns, OpBuilder &b, LayerOp layer,
-                        StringRef circuitName,
+  void preprocessLayers(OpBuilder &b, LayerOp layer, StringRef circuitName,
                         SmallVector<FlatSymbolRefAttr> &stack);
-  void preprocessLayers(CircuitNamespace &ns);
+  void preprocessLayers();
 
   /// For each module, build a bindfile for each bound-layer, if needed.
-  void preprocessModules(CircuitNamespace &ns, InstanceGraph &ig);
+  void preprocessModules();
 
   /// Build the bindfile skeletons for each module. Set up a table which tells
   /// us for each module/layer pair, where to insert the bind operations.
-  void preprocessModule(CircuitNamespace &ns, InstanceGraphNode *node);
+  void preprocessModule(InstanceGraphNode *node);
 
   /// Build a bindfile skeleton for a particular module and layer.
-  void buildBindFile(CircuitNamespace &ns, InstanceGraphNode *node,
-                     OpBuilder &b, SymbolRefAttr layerName, LayerOp layer);
+  void buildBindFile(InstanceGraphNode *node, OpBuilder &b,
+                     SymbolRefAttr layerName, LayerOp layer);
 
   /// Entry point for the function.
-  void runOnOperation() override;
+  LogicalResult operator()();
+
+  MLIRContext *context;
+  InstanceGraph &ig;
+  CircuitOp circuitOp;
 
   /// Indicates exclusive access to modify the circuitNamespace and the circuit.
-  llvm::sys::SmartMutex<true> *circuitMutex;
+  llvm::sys::SmartMutex<true> circuitMutex;
 
   /// A map of layer blocks to "safe" global names which are fine to create in
   /// the circuit namespace.
@@ -262,22 +272,39 @@ class LowerLayersPass
   /// This order is not required for correctness, it helps with legibility.
   llvm::MapVector<SymbolRefAttr, LayerOp> symbolToLayer;
 
+  /// Namespace for creating unique top-level symbols.
+  CircuitNamespace ns;
+
   /// Utility for creating hw::HierPathOp.
-  hw::HierPathCache *hierPathCache;
+  hw::HierPathCache hierPathCache;
 
   /// A mapping from module*layer to bindfile name.
   DenseMap<Operation *, DenseMap<LayerOp, BindFileInfo>> bindFiles;
 };
+} // namespace
+
+LogicalResult LowerLayers::run(MLIRContext *context, InstanceGraph &ig,
+                               CircuitOp circuitOp) {
+  return LowerLayers(context, ig, circuitOp)();
+}
+
+LowerLayers::LowerLayers(MLIRContext *context, InstanceGraph &ig,
+                         CircuitOp circuitOp)
+    : context(context), ig(ig), circuitOp(circuitOp), ns(circuitOp),
+      hierPathCache(&ns,
+                    OpBuilder::InsertPoint(circuitOp.getBodyBlock(),
+                                           circuitOp.getBodyBlock()->begin())) {
+}
 
 /// Multi-process safe function to build a module in the circuit and return it.
 /// The name provided is only a namehint for the module---a unique name will be
 /// generated if there are conflicts with the namehint in the circuit-level
 /// namespace.
-FModuleOp LowerLayersPass::buildNewModule(OpBuilder &builder,
-                                          LayerBlockOp layerBlock) {
+FModuleOp LowerLayers::buildNewModule(OpBuilder &builder,
+                                      LayerBlockOp layerBlock) {
   auto location = layerBlock.getLoc();
   auto namehint = layerBlockGlobals.lookup(layerBlock).moduleName;
-  llvm::sys::SmartScopedLock<true> instrumentationLock(*circuitMutex);
+  llvm::sys::SmartScopedLock<true> lock(circuitMutex);
   FModuleOp newModule = builder.create<FModuleOp>(
       location, builder.getStringAttr(namehint),
       ConventionAttr::get(builder.getContext(), Convention::Internal),
@@ -290,14 +317,14 @@ FModuleOp LowerLayersPass::buildNewModule(OpBuilder &builder,
   return newModule;
 }
 
-void LowerLayersPass::removeLayersFromValue(Value value) {
+void LowerLayers::removeLayersFromValue(Value value) {
   auto type = dyn_cast<RefType>(value.getType());
   if (!type || !type.getLayer())
     return;
   value.setType(type.removeLayer());
 }
 
-void LowerLayersPass::removeLayersFromPorts(FModuleLike moduleLike) {
+void LowerLayers::removeLayersFromPorts(FModuleLike moduleLike) {
   auto oldTypeAttrs = moduleLike.getPortTypesAttr();
   SmallVector<Attribute> newTypeAttrs;
   newTypeAttrs.reserve(oldTypeAttrs.size());
@@ -325,8 +352,7 @@ void LowerLayersPass::removeLayersFromPorts(FModuleLike moduleLike) {
   }
 }
 
-FailureOr<InnerRefMap>
-LowerLayersPass::runOnModuleLike(FModuleLike moduleLike) {
+FailureOr<InnerRefMap> LowerLayers::runOnModuleLike(FModuleLike moduleLike) {
   LLVM_DEBUG({
     llvm::dbgs() << "Module: " << moduleLike.getModuleName() << "\n";
     llvm::dbgs() << "  Examining Layer Blocks:\n";
@@ -356,8 +382,8 @@ LowerLayersPass::runOnModuleLike(FModuleLike moduleLike) {
   return innerRefMap;
 }
 
-void LowerLayersPass::lowerInlineLayerBlock(LayerOp layer,
-                                            LayerBlockOp layerBlock) {
+void LowerLayers::lowerInlineLayerBlock(LayerOp layer,
+                                        LayerBlockOp layerBlock) {
   OpBuilder builder(layerBlock);
   auto macroName = macroNames[layer];
   auto ifDef = builder.create<sv::IfDefOp>(layerBlock.getLoc(), macroName);
@@ -365,8 +391,8 @@ void LowerLayersPass::lowerInlineLayerBlock(LayerOp layer,
   layerBlock.erase();
 }
 
-LogicalResult LowerLayersPass::runOnModuleBody(FModuleOp moduleOp,
-                                               InnerRefMap &innerRefMap) {
+LogicalResult LowerLayers::runOnModuleBody(FModuleOp moduleOp,
+                                           InnerRefMap &innerRefMap) {
   hw::InnerSymbolNamespace ns(moduleOp);
 
   // A cache of values to nameable ops that can be used
@@ -409,7 +435,7 @@ LogicalResult LowerLayersPass::runOnModuleBody(FModuleOp moduleOp,
     if (it != replacements.end())
       return it->getSecond();
 
-    ImplicitLocOpBuilder localBuilder(value.getLoc(), &getContext());
+    ImplicitLocOpBuilder localBuilder(value.getLoc(), context);
     Value replacement;
 
     auto layerBlockOp = user->getParentOfType<LayerBlockOp>();
@@ -476,8 +502,8 @@ LogicalResult LowerLayersPass::runOnModuleBody(FModuleOp moduleOp,
         // TODO: Move to before parallel region to avoid the lock.
         auto insertPoint = OpBuilder::InsertPoint(moduleOp->getBlock(),
                                                   Block::iterator(moduleOp));
-        llvm::sys::SmartScopedLock<true> circuitLock(*circuitMutex);
-        hierPathOp = hierPathCache->getOrCreatePath(
+        llvm::sys::SmartScopedLock<true> lock(circuitMutex);
+        hierPathOp = hierPathCache.getOrCreatePath(
             localBuilder.getArrayAttr({innerRef}), localBuilder.getLoc(),
             insertPoint, layerBlockGlobals.lookup(layerBlockOp).hierPathName);
         hierPathOp.setVisibility(SymbolTable::Visibility::Private);
@@ -751,16 +777,17 @@ LogicalResult LowerLayersPass::runOnModuleBody(FModuleOp moduleOp,
   return success(!result.wasInterrupted());
 }
 
-void LowerLayersPass::preprocessLayers(CircuitNamespace &ns, OpBuilder &b,
-                                       LayerOp layer, StringRef circuitName,
-                                       SmallVector<FlatSymbolRefAttr> &stack) {
+// NOLINTNEXTLINE(misc-no-recursion)
+void LowerLayers::preprocessLayers(OpBuilder &b, LayerOp layer,
+                                   StringRef circuitName,
+                                   SmallVector<FlatSymbolRefAttr> &stack) {
   stack.emplace_back(FlatSymbolRefAttr::get(layer.getSymNameAttr()));
   ArrayRef stackRef(stack);
   symbolToLayer.insert(
       {SymbolRefAttr::get(stackRef.front().getAttr(), stackRef.drop_front()),
        layer});
   if (layer.getConvention() == LayerConvention::Inline) {
-    auto *ctx = &getContext();
+    auto *ctx = context;
     auto macName = macroNameForLayer(circuitName, stack);
     auto symName = ns.newName(macName);
 
@@ -771,26 +798,24 @@ void LowerLayersPass::preprocessLayers(CircuitNamespace &ns, OpBuilder &b,
 
     b.create<sv::MacroDeclOp>(layer->getLoc(), symNameAttr, ArrayAttr(),
                               macNameAttr);
-    macroNames[layer] = FlatSymbolRefAttr::get(&getContext(), symNameAttr);
+    macroNames[layer] = FlatSymbolRefAttr::get(context, symNameAttr);
   }
   for (auto child : layer.getOps<LayerOp>())
-    preprocessLayers(ns, b, child, circuitName, stack);
+    preprocessLayers(b, child, circuitName, stack);
   stack.pop_back();
 }
 
-void LowerLayersPass::preprocessLayers(CircuitNamespace &ns) {
-  auto circuit = getOperation();
-  auto circuitName = circuit.getName();
-  for (auto layer : circuit.getOps<LayerOp>()) {
+void LowerLayers::preprocessLayers() {
+  auto circuitName = circuitOp.getName();
+  for (auto layer : circuitOp.getOps<LayerOp>()) {
     OpBuilder b(layer);
     SmallVector<FlatSymbolRefAttr> stack;
-    preprocessLayers(ns, b, layer, circuitName, stack);
+    preprocessLayers(b, layer, circuitName, stack);
   }
 }
 
-void LowerLayersPass::buildBindFile(CircuitNamespace &ns,
-                                    InstanceGraphNode *node, OpBuilder &b,
-                                    SymbolRefAttr layerName, LayerOp layer) {
+void LowerLayers::buildBindFile(InstanceGraphNode *node, OpBuilder &b,
+                                SymbolRefAttr layerName, LayerOp layer) {
   assert(layer.getConvention() == LayerConvention::Bind);
   auto module = node->getModule<FModuleOp>();
   auto loc = module.getLoc();
@@ -798,8 +823,8 @@ void LowerLayersPass::buildBindFile(CircuitNamespace &ns,
   // Compute the include guard macro name.
   auto macroName = guardMacroNameForLayer(module.getModuleName(), layerName);
   auto macroSymbol = ns.newName(macroName);
-  auto macroNameAttr = StringAttr::get(&getContext(), macroName);
-  auto macroSymbolAttr = StringAttr::get(&getContext(), macroSymbol);
+  auto macroNameAttr = StringAttr::get(context, macroName);
+  auto macroSymbolAttr = StringAttr::get(context, macroSymbol);
   auto macroSymbolRefAttr = FlatSymbolRefAttr::get(macroSymbolAttr);
 
   // Compute the base name for the bind file.
@@ -808,11 +833,10 @@ void LowerLayersPass::buildBindFile(CircuitNamespace &ns,
   // Build the full output path using the filename of the bindfile and the
   // output directory of the layer, if any.
   auto dir = layer->getAttrOfType<hw::OutputFileAttr>("output_file");
-  StringAttr filename = StringAttr::get(&getContext(), bindFileName);
+  StringAttr filename = StringAttr::get(context, bindFileName);
   StringAttr path;
   if (dir)
-    path = StringAttr::get(&getContext(),
-                           Twine(dir.getDirectory()) + bindFileName);
+    path = StringAttr::get(context, Twine(dir.getDirectory()) + bindFileName);
   else
     path = filename;
 
@@ -869,8 +893,7 @@ void LowerLayersPass::buildBindFile(CircuitNamespace &ns,
   info.body = includeGuard.getElseBlock();
 }
 
-void LowerLayersPass::preprocessModule(CircuitNamespace &ns,
-                                       InstanceGraphNode *node) {
+void LowerLayers::preprocessModule(InstanceGraphNode *node) {
   auto *op = node->getModule().getOperation();
   if (!op)
     return;
@@ -879,7 +902,7 @@ void LowerLayersPass::preprocessModule(CircuitNamespace &ns,
   if (!module)
     return;
 
-  OpBuilder b(&getContext());
+  OpBuilder b(context);
   b.setInsertionPointAfter(module);
 
   // Create a bind file only if the layer is used under the module.
@@ -928,39 +951,20 @@ void LowerLayersPass::preprocessModule(CircuitNamespace &ns,
   // emitted in the order which they are declared, for readability.
   for (auto [sym, layer] : symbolToLayer)
     if (layersRequiringBindFiles.contains(layer))
-      buildBindFile(ns, node, b, sym, layer);
+      buildBindFile(node, b, sym, layer);
 }
 
 /// Create the bind file skeleton for each layer, for each module.
-void LowerLayersPass::preprocessModules(CircuitNamespace &ns,
-                                        InstanceGraph &ig) {
+void LowerLayers::preprocessModules() {
   DenseSet<InstanceGraphNode *> visited;
   for (auto *root : ig)
     for (auto *node : llvm::post_order_ext(root, visited))
-      preprocessModule(ns, node);
+      preprocessModule(node);
 }
 
-/// Process a circuit to remove all layer blocks in each module and top-level
-/// layer definition.
-void LowerLayersPass::runOnOperation() {
-  LLVM_DEBUG(
-      llvm::dbgs() << "==----- Running LowerLayers "
-                      "-------------------------------------------------===\n");
-  CircuitOp circuitOp = getOperation();
-
-  // Initialize members which cannot be initialized automatically.
-  llvm::sys::SmartMutex<true> mutex;
-  circuitMutex = &mutex;
-
-  auto *ig = &getAnalysis<InstanceGraph>();
-  CircuitNamespace ns(circuitOp);
-  hw::HierPathCache hpc(
-      &ns, OpBuilder::InsertPoint(getOperation().getBodyBlock(),
-                                  getOperation().getBodyBlock()->begin()));
-  hierPathCache = &hpc;
-
-  preprocessLayers(ns);
-  preprocessModules(ns, *ig);
+LogicalResult LowerLayers::operator()() {
+  preprocessLayers();
+  preprocessModules();
 
   auto mergeMaps = [](auto &&a, auto &&b) {
     if (failed(a))
@@ -982,7 +986,7 @@ void LowerLayersPass::runOnOperation() {
         return runOnModuleLike(mod);
       });
   if (failed(failureOrInnerRefMap))
-    return signalPassFailure();
+    return failure();
   auto &innerRefMap = *failureOrInnerRefMap;
 
   // Rewrite any hw::HierPathOps which have namepaths that contain rewritting
@@ -1023,13 +1027,26 @@ void LowerLayersPass::runOnOperation() {
        llvm::make_early_inc_range(circuitOp.getBodyBlock()->getOps<LayerOp>()))
     layerOp.erase();
 
-  // Cleanup state.
-  circuitMutex = nullptr;
-  layerBlockGlobals.clear();
-  macroNames.clear();
-  symbolToLayer.clear();
-  hierPathCache = nullptr;
-  bindFiles.clear();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Pass Infrastructure
+//===----------------------------------------------------------------------===//
+
+class LowerLayersPass : public impl::LowerLayersBase<LowerLayersPass> {
+  void runOnOperation() override;
+};
+
+/// Process a circuit to remove all layer blocks in each module and top-level
+/// layer definition.
+void LowerLayersPass::runOnOperation() {
+  LLVM_DEBUG(
+      llvm::dbgs() << "==----- Running LowerLayers "
+                      "-------------------------------------------------===\n");
+  auto &ig = getAnalysis<InstanceGraph>();
+  if (failed(LowerLayers::run(&getContext(), ig, getOperation())))
+    signalPassFailure();
 }
 
 std::unique_ptr<mlir::Pass> circt::firrtl::createLowerLayersPass() {
