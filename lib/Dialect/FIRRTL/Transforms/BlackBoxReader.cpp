@@ -402,7 +402,7 @@ hw::OutputFileAttr BlackBoxReaderPass::getOutputFile(Operation *origOp,
   // (or one set to the current directory), have a DUT annotation, and the
   // module must not be instantiated under the DUT.
   else if (!testBenchDir.empty() && targetDir == "." &&
-           !instanceInfo->anyInstanceInEffectiveDesign(
+           !instanceInfo->anyInstancesInEffectiveDesign(
                cast<igraph::ModuleOpInterface>(origOp)))
     outDir = testBenchDir;
   else if (isCover)

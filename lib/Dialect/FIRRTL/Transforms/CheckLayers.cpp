@@ -40,7 +40,7 @@ class CheckLayers {
     // Note: Grand Central companions are under a layer (because InstanceInfo
     // uses the inclusive definition of "under" to be consistent with how the
     // design-under-test module is "under" the design).
-    if (!iInfo.anyInstanceUnderLayer(moduleOp))
+    if (!iInfo.anyInstancesUnderLayer(moduleOp))
       return;
 
     // Check if this module has any layerblock ops.  If these exist, then these
@@ -70,7 +70,7 @@ class CheckLayers {
       if (instOp->getParentOfType<LayerBlockOp>())
         instUnderLayerBlock.push_back(instOp);
       else if (auto parent = instOp->getParentOfType<FModuleOp>();
-               iInfo.anyInstanceUnderLayer(parent)) {
+               iInfo.anyInstancesUnderLayer(parent)) {
         transitiveModules.insert(parent);
         instUnderLayerModule.push_back(instOp);
       }

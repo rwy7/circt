@@ -2162,7 +2162,7 @@ void GrandCentralPass::runOnOperation() {
                 //      is under a bind.
                 auto *modNode = instancePaths->instanceGraph.lookup(mod);
                 if (modNode != companionNode &&
-                    instanceInfo->anyInstanceInEffectiveDesign(
+                    instanceInfo->anyInstancesInEffectiveDesign(
                         modNode->getModule()))
                   continue;
 

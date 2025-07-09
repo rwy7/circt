@@ -48,7 +48,7 @@ struct MemToRegOfVecPass
 
     DenseSet<Operation *> dutModuleSet;
     for (auto moduleOp : circtOp.getOps<FModuleOp>())
-      if (instanceInfo.anyInstanceInEffectiveDesign(moduleOp))
+      if (instanceInfo.anyInstancesInEffectiveDesign(moduleOp))
         dutModuleSet.insert(moduleOp);
 
     mlir::parallelForEach(circtOp.getContext(), dutModuleSet,

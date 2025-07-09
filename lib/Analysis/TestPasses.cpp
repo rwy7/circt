@@ -235,24 +235,24 @@ static void printModuleInfo(igraph::ModuleOpInterface op,
   op->print(llvm::errs(), flags);
   llvm::errs() << "\n"
                << "    isDut: " << iInfo.isDut(op) << "\n"
-               << "    anyInstanceUnderDut: " << iInfo.anyInstanceUnderDut(op)
+               << "    anyInstancesUnderDut: " << iInfo.anyInstancesUnderDut(op)
                << "\n"
                << "    allInstancesUnderDut: " << iInfo.allInstancesUnderDut(op)
                << "\n"
-               << "    anyInstanceUnderEffectiveDut: "
-               << iInfo.anyInstanceUnderEffectiveDut(op) << "\n"
+               << "    anyInstancesUnderEffectiveDut: "
+               << iInfo.anyInstancesUnderEffectiveDut(op) << "\n"
                << "    allInstancesUnderEffectiveDut: "
                << iInfo.allInstancesUnderEffectiveDut(op) << "\n"
-               << "    anyInstanceUnderLayer: "
-               << iInfo.anyInstanceUnderLayer(op) << "\n"
+               << "    anyInstancesUnderLayer: "
+               << iInfo.anyInstancesUnderLayer(op) << "\n"
                << "    allInstancesUnderLayer: "
                << iInfo.allInstancesUnderLayer(op) << "\n"
-               << "    anyInstanceInDesign: " << iInfo.anyInstanceInDesign(op)
+               << "    anyInstancesInDesign: " << iInfo.anyInstancesInDesign(op)
                << "\n"
                << "    allInstancesInDesign: " << iInfo.allInstancesInDesign(op)
                << "\n"
-               << "    anyInstanceInEffectiveDesign: "
-               << iInfo.anyInstanceInEffectiveDesign(op) << "\n"
+               << "    anyInstancesInEffectiveDesign: "
+               << iInfo.anyInstancesInEffectiveDesign(op) << "\n"
                << "    allInstancesInEffectiveDesign: "
                << iInfo.allInstancesInEffectiveDesign(op) << "\n";
 }

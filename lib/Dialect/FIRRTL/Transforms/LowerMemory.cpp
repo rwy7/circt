@@ -549,7 +549,7 @@ void LowerMemoryPass::runOnOperation() {
   // Deduplication of memories is allowed if the module is under the "effective"
   // design-under-test (DUT).
   for (auto moduleOp : circuit.getBodyBlock()->getOps<FModuleOp>()) {
-    auto shouldDedup = instanceInfo.anyInstanceInEffectiveDesign(moduleOp);
+    auto shouldDedup = instanceInfo.anyInstancesInEffectiveDesign(moduleOp);
     if (failed(runOnModule(moduleOp, shouldDedup)))
       return signalPassFailure();
   }

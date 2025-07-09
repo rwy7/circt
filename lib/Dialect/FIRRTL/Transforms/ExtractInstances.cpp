@@ -381,7 +381,7 @@ void ExtractInstancesPass::collectAnnos() {
         continue;
       LLVM_DEBUG(llvm::dbgs()
                  << "Clock gate `" << module.getModuleName() << "`\n");
-      if (!instanceInfo->anyInstanceInDesign(module)) {
+      if (!instanceInfo->anyInstancesInDesign(module)) {
         LLVM_DEBUG(llvm::dbgs() << "- Ignored (outside DUT)\n");
         continue;
       }
@@ -413,7 +413,7 @@ void ExtractInstancesPass::collectAnnos() {
 
     for (auto module : circuit.getOps<FMemModuleOp>()) {
       LLVM_DEBUG(llvm::dbgs() << "Memory `" << module.getModuleName() << "`\n");
-      if (!instanceInfo->anyInstanceInDesign(module)) {
+      if (!instanceInfo->anyInstancesInDesign(module)) {
         LLVM_DEBUG(llvm::dbgs() << "- Ignored (outside DUT)\n");
         continue;
       }
@@ -541,7 +541,7 @@ void ExtractInstancesPass::extractInstances() {
     // do.  Otherwise we proceed to bubble it up one level in the hierarchy and
     // add the resulting instances back to the worklist.
     if (inst->getParentOfType<LayerBlockOp>() ||
-        !instanceInfo->anyInstanceInDesign(parent) ||
+        !instanceInfo->anyInstancesInDesign(parent) ||
         instanceGraph->lookup(parent)->noUses() ||
         (stopAtDUT && instanceInfo->isDut(parent))) {
       LLVM_DEBUG(llvm::dbgs() << "\nNo need to further move " << inst << "\n");
@@ -1134,7 +1134,7 @@ void ExtractInstancesPass::createTraceFiles(ClassOp &sifiveMetadataClass) {
       // from the path and make the path look like it's rooted at the first DUT
       // module (so `TestHarness.dut.foo.bar` becomes `DUTModule.foo.bar`).
       while (!path.empty() &&
-             !instanceInfo->anyInstanceInDesign(cast<igraph::ModuleOpInterface>(
+             !instanceInfo->anyInstancesInDesign(cast<igraph::ModuleOpInterface>(
                  symbolTable->lookup(path.back().getModule())))) {
         LLVM_DEBUG(llvm::dbgs()
                    << "    - Dropping non-DUT segment " << path.back() << "\n");

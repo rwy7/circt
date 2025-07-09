@@ -463,7 +463,7 @@ void AddSeqMemPortsPass::runOnOperation() {
       auto op = node->getModule();
 
       // Skip anything wholly _not_ in the design.
-      if (!instanceInfo->anyInstanceInEffectiveDesign(op))
+      if (!instanceInfo->anyInstancesInEffectiveDesign(op))
         continue;
 
       // Process the module or memory.

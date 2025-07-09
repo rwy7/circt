@@ -231,7 +231,7 @@ struct ObjectModelIR {
     //
     // TODO: This incongruity seems bad.  Can we instead not generate metadata
     // for any path not in the design?
-    bool inDut = instanceInfo.anyInstanceInEffectiveDesign(mem);
+    bool inDut = instanceInfo.anyInstancesInEffectiveDesign(mem);
     if (inDut) {
       for (auto memPath : memPaths) {
         {
@@ -572,7 +572,7 @@ CreateSiFiveMetadataPass::emitMemoryMetadata(ObjectModelIR &omir) {
                         .str();
 
     // Do not emit any JSON for memories which are not in the DUT.
-    if (!instanceInfo->anyInstanceInEffectiveDesign(mem))
+    if (!instanceInfo->anyInstancesInEffectiveDesign(mem))
       return;
     // This adds a Json array element entry corresponding to this memory.
     jsonStream.object([&] {
@@ -770,7 +770,7 @@ CreateSiFiveMetadataPass::emitRetimeModulesMetadata(ObjectModelIR &omir) {
     for (auto module : circuitOp.getBodyBlock()->getOps<FModuleLike>()) {
       // The annotation has no supplemental information, just remove it.
       if (!AnnotationSet::removeAnnotations(module, retimeModuleAnnoClass) ||
-          !instanceInfo->anyInstanceInEffectiveDesign(module))
+          !instanceInfo->anyInstancesInEffectiveDesign(module))
         continue;
 
       // We use symbol substitution to make sure we output the correct thing
@@ -836,7 +836,7 @@ CreateSiFiveMetadataPass::emitSitestBlackboxMetadata(ObjectModelIR &omir) {
 
     // Record the defname of the module.
     bool inDut = false;
-    if (instanceInfo->anyInstanceInEffectiveDesign(extModule)) {
+    if (instanceInfo->anyInstancesInEffectiveDesign(extModule)) {
       inDut = true;
       dutModules.push_back(*extModule.getDefname());
     } else {
