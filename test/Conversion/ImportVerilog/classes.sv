@@ -1,4 +1,5 @@
 // RUN: circt-verilog %s --parse-only | FileCheck %s
+// REQUIRES: slang
 
 /// Flag tests
 
