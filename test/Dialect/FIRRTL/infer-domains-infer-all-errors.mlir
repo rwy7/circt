@@ -202,3 +202,37 @@ firrtl.circuit "MultipleErrors" {
     firrtl.matchingconnect %b, %a : !firrtl.uint<1>
   }
 }
+
+firrtl.circuit "DomainCrossingViaWhen" {
+  firrtl.domain @ClockDomain
+
+  firrtl.module @DomainCrossingViaWhen(
+    in %A: !firrtl.domain of @ClockDomain,
+    in %B: !firrtl.domain of @ClockDomain,
+    in %i: !firrtl.uint<1> domains [%A],
+    // expected-note @below {{condition has domains: [ClockDomain: B]}}
+    in %p: !firrtl.uint<1> domains [%B]
+  ) {
+    // expected-note @below {{destination has domains: [ClockDomain: A]}}
+    %wire = firrtl.wire : !firrtl.uint<1>
+    firrtl.when %p : !firrtl.uint<1> {
+      // expected-error @below {{illegal domain crossing in operation}}
+      firrtl.matchingconnect %wire, %i : !firrtl.uint<1>
+    }
+  }
+
+  // firrtl.module @DomainCrossingViaWhen(
+  //   in %A: !firrtl.domain of @ClockDomain,
+  //   in %B: !firrtl.domain of @ClockDomain,
+  //   // expected-note @below {{d has domains: [ClockDomain: A]}}
+  //   in %i: !firrtl.uint<1> domains [%A],
+  //   // expected-note @below {{condition has domains: [ClockDomain: B]}}
+  //   in %p: !firrtl.uint<1> domains [%B]
+  // ) {
+  //   %wire = firrtl.wire : !firrtl.uint<1>
+  //   firrtl.when %p : !firrtl.uint<1> {
+  //     // expected-error @below {{illegal domain crossing in operation}}
+  //     firrtl.matchingconnect %wire, %i : !firrtl.uint<1>
+  //   }
+  // }
+}

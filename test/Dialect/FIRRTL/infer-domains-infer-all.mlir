@@ -419,3 +419,50 @@ firrtl.circuit "PrimOpTest" {
     firrtl.matchingconnect %o, %x : !firrtl.uint<3>
   }
 }
+
+firrtl.circuit "WhenTest" {
+  firrtl.domain @ClockDomain
+
+  // CHECK: firrtl.module @WhenTest(in %ClockDomain: !firrtl.domain of @ClockDomain, in %i: !firrtl.uint<1> domains [%ClockDomain], in %p: !firrtl.uint<1> domains [%ClockDomain]) {
+  // CHECK:     %wire = firrtl.wire : !firrtl.uint<1>
+  // CHECK:     firrtl.when %p : !firrtl.uint<1> {
+  // CHECK:       firrtl.matchingconnect %wire, %i : !firrtl.uint<1>
+  // CHECK:     }
+  // CHECK:   }
+  // CHECK: }
+  firrtl.module @WhenTest(in %i: !firrtl.uint<1>, in %p: !firrtl.uint<1>) {
+    %wire = firrtl.wire : !firrtl.uint<1>
+    firrtl.when %p : !firrtl.uint<1> {
+      firrtl.matchingconnect %wire, %i : !firrtl.uint<1>
+    }
+  }
+
+  // CHECK:      firrtl.module @NestedWhenTest(
+  // CHECK-SAME:   in %i:  !firrtl.uint<1> domains [%B],
+  // CHECK-SAME:   in %A:  !firrtl.domain of @ClockDomain,
+  // CHECK-SAME:   in %p1: !firrtl.uint<1> domains [%A],
+  // CHECK-SAME:   in %B:  !firrtl.domain of @ClockDomain,
+  // CHECK-SAME:   in %p2: !firrtl.uint<1> domains [%B]
+  // CHECK-SAME: ) {
+  // CHECK:        firrtl.when %p1 : !firrtl.uint<1> {
+  // CHECK:          %wire = firrtl.wire : !firrtl.uint<1>
+  // CHECK:          firrtl.when %p2 : !firrtl.uint<1> {
+  // CHECK:            firrtl.matchingconnect %wire, %i : !firrtl.uint<1>
+  // CHECK:          }
+  // CHECK:        }
+  // CHECK:      }
+  firrtl.module @NestedWhenTest(
+    in %i:  !firrtl.uint<1>,
+    in %A:  !firrtl.domain of @ClockDomain,
+    in %p1: !firrtl.uint<1> domains [%A], 
+    in %B:  !firrtl.domain of @ClockDomain,
+    in %p2: !firrtl.uint<1> domains [%B]
+  ) {
+    firrtl.when %p1 : !firrtl.uint<1> {
+      %wire = firrtl.wire : !firrtl.uint<1>
+      firrtl.when %p2 : !firrtl.uint<1> {
+        firrtl.matchingconnect %wire, %i : !firrtl.uint<1>
+      }
+    }
+  }
+}

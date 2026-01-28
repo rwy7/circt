@@ -86,6 +86,18 @@ static bool isDriven(DomainValue port) {
   return false;
 }
 
+/// True if the value is defined by a constant.
+static bool isConstantLike(Value value) {
+  auto *op = value.getDefiningOp();
+  return op && op->hasTrait<OpTrait::ConstantLike>();
+}
+
+/// True if the value ought to be associated with a domain. Non-hardware types,
+/// and constants do not have domain associations.
+static bool shouldHaveDomainAssociation(Value value) {
+  return !isConstantLike(value) && isa<FIRRTLBaseType>(value.getType());
+}
+
 //====--------------------------------------------------------------------------
 // Global State.
 //====--------------------------------------------------------------------------
@@ -454,7 +466,7 @@ public:
   /// For a hardware value, get the term which represents the row of associated
   /// domains. If no mapping has been defined, returns nullptr.
   Term *getOptDomainAssociation(Value value) const {
-    assert(isa<FIRRTLBaseType>(value.getType()));
+    assert(shouldHaveDomainAssociation(value));
     auto it = associationTable.find(value);
     if (it == associationTable.end())
       return nullptr;
@@ -678,45 +690,71 @@ static void emitMissingPortDomainAssociationError(const DomainInfo &info, T op,
 static LogicalResult unifyAssociations(const DomainInfo &info,
                                        TermAllocator &allocator,
                                        DomainTable &table, Operation *op,
-                                       Value lhs, Value rhs) {
+                                       const char *lhsName, Value lhs,
+                                       const char *rhsName, Value rhs) {
   if (!lhs || !rhs)
     return success();
 
   if (lhs == rhs)
     return success();
 
-  auto *lhsTerm = table.getOptDomainAssociation(lhs);
-  auto *rhsTerm = table.getOptDomainAssociation(rhs);
+  auto *lhsAssociation = table.getOptDomainAssociation(lhs);
+  auto *rhsAssociation = table.getOptDomainAssociation(rhs);
 
-  if (lhsTerm) {
-    if (rhsTerm) {
-      if (failed(unify(lhsTerm, rhsTerm))) {
+  if (lhsAssociation) {
+    if (rhsAssociation) {
+      if (failed(unify(lhsAssociation, rhsAssociation))) {
         auto diag = op->emitOpError("illegal domain crossing in operation");
         auto &note1 = diag.attachNote(lhs.getLoc());
 
-        note1 << "1st operand has domains: ";
+        note1 << lhsName << " has domains: ";
         VariableIDTable idTable;
-        render(info, note1, idTable, lhsTerm);
+        render(info, note1, idTable, lhsAssociation);
 
         auto &note2 = diag.attachNote(rhs.getLoc());
-        note2 << "2nd operand has domains: ";
-        render(info, note2, idTable, rhsTerm);
-
+        note2 << rhsName << " has domains: ";
+        render(info, note2, idTable, rhsAssociation);
         return failure();
       }
+    } else {
+      table.setDomainAssociation(rhs, lhsAssociation);
     }
-    table.setDomainAssociation(rhs, lhsTerm);
-    return success();
+  } else {
+    if (rhsAssociation) {
+      table.setDomainAssociation(lhs, rhsAssociation);
+    } else {
+      auto *var = allocator.allocVar();
+      table.setDomainAssociation(lhs, var);
+      table.setDomainAssociation(rhs, var);
+    }
   }
 
-  if (rhsTerm) {
-    table.setDomainAssociation(lhs, rhsTerm);
-    return success();
-  }
+  return success();
+}
 
-  auto *var = allocator.allocVar();
-  table.setDomainAssociation(lhs, var);
-  table.setDomainAssociation(rhs, var);
+static LogicalResult unifyOperandAssociations(const DomainInfo &info,
+                                              TermAllocator &allocator,
+                                              DomainTable &table, Operation *op,
+                                              Value lhs, Value rhs) {
+  auto *lhsName = "1st operand";
+  auto *rhsName = "2nd operand";
+  return unifyAssociations(info, allocator, table, op, lhsName, lhs, rhsName,
+                           rhs);
+}
+
+// Propagate domains from operands to results. This is a conservative approach
+// - all operands and results share the same domain associations.
+static LogicalResult propagateAssociations(const DomainInfo &info,
+                                           TermAllocator &allocator,
+                                           DomainTable &table, Operation *op) {
+  Value lhs;
+  for (auto rhs : concat<Value>(op->getOperands(), op->getResults())) {
+    if (!shouldHaveDomainAssociation(rhs))
+      continue;
+    if (failed(unifyOperandAssociations(info, allocator, table, op, lhs, rhs)))
+      return failure();
+    lhs = rhs;
+  }
   return success();
 }
 
@@ -834,41 +872,6 @@ static LogicalResult processInstancePorts(const DomainInfo &info,
   return success();
 }
 
-static LogicalResult processConditionalAccess(const DomainInfo &info, TermAllocator &allocator, DomainTable &table, Operation *op, Value value) {
-  auto *block = connect->getBlock();
-  auto *dstBlock = src.getParentBlock();
-  while (block != dstBlock) {
-    auto *container = block->getParentOp();
-    if (auto when = dyn_cast<WhenOp>(container)) {
-      auto cond = when.getCondition();
-      if (failed(unifyAssociations(info, allocator, table, op, dst, cond)))
-        return failure();
-    }
-    block = container->getBlock();
-  } 
-}
-
-static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
-                               DomainTable &table, FConnectLike connect) {
-  auto src = connect.getSrc();
-  auto dst = connect.getDest();
-
-  auto *block = connect->getBlock();
-  auto *dstBlock = src.getParentBlock();
-
-  while (block != dstBlock) {
-    auto *container = block->getParentOp();
-    if (auto when = dyn_cast<WhenOp>(container)) {
-      auto cond = when.getCondition();
-      if (failed(unifyAssociations(info, allocator, table, connect, dst, cond)))
-        return failure();
-    }
-    block = container->getBlock();
-  }
-
-  return unifyAssociations(info, allocator, table, connect, dst, src);
-}
-
 static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
                                DomainTable &table,
                                const ModuleUpdateTable &updateTable,
@@ -895,8 +898,8 @@ static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
                                DomainTable &table, UnsafeDomainCastOp op) {
   auto domains = op.getDomains();
   if (domains.empty())
-    return unifyAssociations(info, allocator, table, op, op.getInput(),
-                             op.getResult());
+    return unifyOperandAssociations(info, allocator, table, op, op.getInput(),
+                                    op.getResult());
 
   auto input = op.getInput();
   RowTerm *inputRow = getDomainAssociationAsRow(info, allocator, table, input);
@@ -933,47 +936,89 @@ static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
   return failure();
 }
 
+static LogicalResult processConditionalConnect(const DomainInfo &info,
+                                              TermAllocator &allocator,
+                                              DomainTable &table, Operation *op,
+                                              Value value) {
+  auto *block = op->getBlock();
+  auto *target = value.getParentBlock();
+  while (block != target) {
+    auto *parent = block->getParentOp();
+    if (auto when = dyn_cast<WhenOp>(parent)) {
+      auto cond = when.getCondition();
+      if (failed(unifyAssociations(info, allocator, table, op, "destination", value,
+                                   "condition", cond)))
+        return failure();
+    }
+    block = parent->getBlock();
+  }
+  return success();
+}
+
+static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
+                               DomainTable &table, FConnectLike connect) {
+  if (failed(propagateAssociations(info, allocator, table, connect)))
+    return failure();
+
+  return processConditionalConnect(info, allocator, table, connect,
+                                  connect.getDest());
+}
+
+static LogicalResult processCondition(const DomainInfo &info,
+                                      TermAllocator &allocator,
+                                      DomainTable &table, Operation *op,
+                                      Value value) {
+  auto *block = op->getBlock();
+  while (block) {
+    auto *parent = block->getParentOp();
+    if (auto when = dyn_cast<WhenOp>(parent)) {
+      auto cond = when.getCondition();
+      if (!shouldHaveDomainAssociation(cond))
+        continue;
+      if (failed(unifyAssociations(info, allocator, table, op, "operand",
+                                   value, "condition", cond)))
+        return failure();
+    }
+    block = parent->getBlock();
+  }
+  return success();
+}
+
 static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
                                DomainTable &table,
                                const ModuleUpdateTable &updateTable,
                                Operation *op) {
-  if (auto instance = dyn_cast<InstanceOp>(op))
-    return processOp(info, allocator, table, updateTable, instance);
-  if (auto instance = dyn_cast<InstanceChoiceOp>(op))
-    return processOp(info, allocator, table, updateTable, instance);
-  if (auto cast = dyn_cast<UnsafeDomainCastOp>(op))
-    return processOp(info, allocator, table, cast);
-  if (auto def = dyn_cast<DomainDefineOp>(op))
-    return processOp(info, allocator, table, def);
-  if (auto connect = dyn_cast<FConnectLike>(op))
-    return processOp(info, allocator, table, connect);
-  if (auto verif = d)
-
-  // For all other operations (including connections), propagate domains from
-  // operands to results. This is a conservative approach - all operands and
-  // results share the same domain associations.
-  Value lhs;
-  for (auto rhs : op->getOperands()) {
-    if (!isa<FIRRTLBaseType>(rhs.getType()))
-      continue;
-    if (auto *op = rhs.getDefiningOp();
-        op && op->hasTrait<OpTrait::ConstantLike>())
-      continue;
-    if (failed(unifyAssociations(info, allocator, table, op, lhs, rhs)))
-      return failure();
-    lhs = rhs;
-  }
-  for (auto rhs : op->getResults()) {
-    if (!isa<FIRRTLBaseType>(rhs.getType()))
-      continue;
-    if (auto *op = rhs.getDefiningOp();
-        op && op->hasTrait<OpTrait::ConstantLike>())
-      continue;
-    if (failed(unifyAssociations(info, allocator, table, op, lhs, rhs)))
-      return failure();
-    lhs = rhs;
-  }
-  return success();
+  return TypeSwitch<Operation *, LogicalResult>(op)
+      .Case<InstanceOp, InstanceChoiceOp>([&](auto op) {
+        return processOp(info, allocator, table, updateTable, op);
+      })
+      .Case<UnsafeDomainCastOp>(
+          [&](auto op) { return processOp(info, allocator, table, op); })
+      .Case<DomainDefineOp>(
+          [&](auto op) { return processOp(info, allocator, table, op); })
+      .Case<FConnectLike>(
+          [&](auto op) { return processOp(info, allocator, table, op); })
+      .Case<PrintFOp, FPrintFOp, FFlushOp, StopOp>([&](auto op) {
+        if (failed(propagateAssociations(info, allocator, table, op)))
+          return failure();
+        return processCondition(info, allocator, table, op, op.getCond());
+      })
+      .Case<AssertOp, AssumeOp, UnclockedAssumeIntrinsicOp, CoverOp,
+            DPICallIntrinsicOp>([&](auto op) {
+        if (failed(propagateAssociations(info, allocator, table, op)))
+          return failure();
+        return processCondition(info, allocator, table, op, op.getEnable());
+      })
+      .Case<RefForceOp, RefForceInitialOp, RefReleaseOp, RefReleaseInitialOp>(
+          [&](auto op) {
+            if (failed(propagateAssociations(info, allocator, table, op)))
+              return failure();
+            return processCondition(info, allocator, table, op,
+                                    op.getPredicate());
+          })
+      .Default([&](auto op) {
+        return propagateAssociations(info, allocator, table, op);
+      });
 }
 
 static LogicalResult processModuleBody(const DomainInfo &info,
