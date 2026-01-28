@@ -834,6 +834,41 @@ static LogicalResult processInstancePorts(const DomainInfo &info,
   return success();
 }
 
+static LogicalResult processConditionalAccess(const DomainInfo &info, TermAllocator &allocator, DomainTable &table, Operation *op, Value value) {
+  auto *block = connect->getBlock();
+  auto *dstBlock = src.getParentBlock();
+  while (block != dstBlock) {
+    auto *container = block->getParentOp();
+    if (auto when = dyn_cast<WhenOp>(container)) {
+      auto cond = when.getCondition();
+      if (failed(unifyAssociations(info, allocator, table, op, dst, cond)))
+        return failure();
+    }
+    block = container->getBlock();
+  } 
+}
+
+static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
+                               DomainTable &table, FConnectLike connect) {
+  auto src = connect.getSrc();
+  auto dst = connect.getDest();
+
+  auto *block = connect->getBlock();
+  auto *dstBlock = src.getParentBlock();
+
+  while (block != dstBlock) {
+    auto *container = block->getParentOp();
+    if (auto when = dyn_cast<WhenOp>(container)) {
+      auto cond = when.getCondition();
+      if (failed(unifyAssociations(info, allocator, table, connect, dst, cond)))
+        return failure();
+    }
+    block = container->getBlock();
+  }
+
+  return unifyAssociations(info, allocator, table, connect, dst, src);
+}
+
 static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
                                DomainTable &table,
                                const ModuleUpdateTable &updateTable,
@@ -910,6 +945,9 @@ static LogicalResult processOp(const DomainInfo &info, TermAllocator &allocator,
     return processOp(info, allocator, table, cast);
   if (auto def = dyn_cast<DomainDefineOp>(op))
     return processOp(info, allocator, table, def);
+  if (auto connect = dyn_cast<FConnectLike>(op))
+    return processOp(info, allocator, table, connect);
+  if (auto verif = d)
 
   // For all other operations (including connections), propagate domains from
   // operands to results. This is a conservative approach - all operands and
